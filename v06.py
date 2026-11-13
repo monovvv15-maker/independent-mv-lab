@@ -6,12 +6,12 @@ from review import build_review
 SCENES={
  "01_morning": (["intitle:morning street","intitle:sunrise road","intitle:morning walking"],("morning","sunrise","dawn"),("street","road","city","town","walk","drive")),
  "02_rain": (["intitle:rain street","intitle:puddle","intitle:rainy city"],("rain","puddle","wet"),()),
- "03_door": (["intitle:shoes door","intitle:footsteps","intitle:doorstep"],("shoe","footstep","doorstep","doorway"),()),
+ "03_door": (["intitle:shoes door","intitle:footsteps","intitle:doorstep"],("shoe","footstep"),("shoe","door","walking","feet")),
  "04_walking": (["intitle:walking street","intitle:walking town","intitle:walk rural"],("walk","stroll"),("street","town","rural","path","sidewalk","city","road")),
  "05_window": (["intitle:window rain","intitle:leaves wind","intitle:trees wind"],("window","leaf","leaves","tree"),("rain","wind","window","trees","leaves","breeze")),
  "06_sunshine": (["intitle:sunny street","intitle:sunlight town","intitle:morning neighborhood"],("sunny","sunlight","sunshine","morning"),("street","town","neighborhood","city","road"))
 }
-BLOCK=("wildfire","explosive","simulation","meeting","zoo","bear","subway","video game","cloud street","planet","nebula","star formation","volcano")
+BLOCK=("wildfire","explosive","simulation","meeting","zoo","bear","subway","video game","cloud street","planet","nebula","star formation","volcano","prime minister","council","nato summit","department of energy","hurricane","destruction","cyberpunk","hailuo ai","cats soak","night on foot")
 def relevant(title, scene):
     title=re.sub(r"[^a-z0-9]+"," ",title.lower())
     if any(b in title for b in BLOCK):return False
