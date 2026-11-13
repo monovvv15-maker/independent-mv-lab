@@ -1,0 +1,25 @@
+name: Independent MV - free footage discovery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run offline adapter tests
+        run: python -m unittest -v test_v03.py
+      - name: Search live Wikimedia Commons video metadata
+        run: python pipeline.py --out discovery_output --limit 8
+      - name: Upload review data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-footage-review
+          path: discovery_output/
+          retention-days: 3
