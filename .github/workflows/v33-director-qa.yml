@@ -1,0 +1,27 @@
+name: V33 story director research and no-repeat gate (no video)
+on:
+  push:
+    paths:
+      - .github/workflows/v33-director-qa.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test source reuse and meaningful story progression
+        run: python -m unittest -v test_v33.py
+      - name: Write director quality report, no rendering
+        run: python v33_director_gate.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v33-director-plan-and-missing-shots
+          path: |
+            catalog/v33_narrative_shot_plan.json
+            discovery_output/v33_director_qa.json
+          retention-days: 7
