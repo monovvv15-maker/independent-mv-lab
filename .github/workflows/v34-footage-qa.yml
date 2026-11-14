@@ -1,0 +1,36 @@
+name: V34 targeted story-action footage QA (no MV render)
+on:
+  push:
+    paths:
+      - .github/workflows/v34-footage-qa.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Check official footage and take bounded reference stills
+        run: python v34_review_sources.py
+      - name: Summarize available video sources
+        run: |
+          python - <<'PY'
+          import json
+          a=json.load(open('v18_review/v18_report.json'))
+          print('available', [x['id'] for x in a if x['status']=='frames_extracted'])
+          print('missing', [(x['id'],x.get('error')) for x in a if x['status']!='frames_extracted'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v34-targeted-story-frames
+          path: |
+            v18_review/index.html
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 5
