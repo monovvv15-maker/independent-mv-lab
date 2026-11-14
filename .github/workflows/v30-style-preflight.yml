@@ -1,0 +1,18 @@
+name: V30 seven-chapter style preflight (no render)
+on:
+  push:
+    paths:
+      - .github/workflows/v30-style-preflight.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest -v test_v29.py test_v30.py
+      - run: python v30_preflight.py
