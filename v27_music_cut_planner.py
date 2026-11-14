@@ -15,6 +15,7 @@ def plan(catalog,ends=CUT_ENDS):
         idx=next((i for i,(a,b,_) in enumerate(CHAPTERS) if a<=midpoint<b),len(CHAPTERS)-1)
         prefs=CHAPTERS[idx][2]
         eligible=[c for c in catalog if
+          c.get('retrieval_status') != 'exceeds_100MiB_source_limit' and
           c.get('duration') is not None and c['duration']>=end-last-0.05 and
           c.get('license_page')=='Free' and
           any(prefs.get(t,0)>0 for t in c.get('tags',[])) and
