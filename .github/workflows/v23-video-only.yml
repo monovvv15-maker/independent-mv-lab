@@ -1,0 +1,30 @@
+name: V23 video-only rough render - requires manual approval
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_video_generation:
+        description: "Enter YES only after author says 動画生成開始"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.event.inputs.confirm_video_generation == 'YES'
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python -m unittest -v test_v23.py
+      - run: python v23_prelaunch.py
+      - name: Render source-only silent rough - NO original audio upload
+        run: python v23_video_only.py --output v23_silent_rough_30s.mp4 --authorize-render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-silent-rough-30s
+          path: v23_silent_rough_30s.mp4
+          retention-days: 3
