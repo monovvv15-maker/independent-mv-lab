@@ -1,0 +1,389 @@
+{
+  "version": "V35",
+  "canonical_story": "scripts/EGACHAN_V29_CANONICAL_STORYBOARD_20261114.md",
+  "research": "reports/V33_GITHUB_CREATORS_RESEARCH_AND_DIRECTOR_RULES_20261114.md",
+  "duration_seconds": 199.872,
+  "status": "director_revised_pending_motion_qa",
+  "video_generated": false,
+  "approval_phrase": "動画作成 or 動画生成開始",
+  "narrative_arc": [
+    "present_departure",
+    "rain_memory",
+    "present_movement",
+    "past_present_comparison",
+    "permission_to_pause",
+    "small_discovery",
+    "open_future"
+  ],
+  "shots": [
+    {
+      "shot_id": "S01",
+      "chapter": 1,
+      "visual": "靴を手に取る",
+      "meaning": "今の自分が今日を始める",
+      "source_id": "4953053",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S02",
+      "chapter": 1,
+      "visual": "靴紐を結ぶ",
+      "meaning": "立ち上がる準備",
+      "source_id": "missing-shoes-detail",
+      "role": "action",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S03",
+      "chapter": 1,
+      "visual": "玄関から外へ一歩",
+      "meaning": "室内から外へ実際に移動する",
+      "source_id": "missing-exit-footstep",
+      "role": "action",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S04",
+      "chapter": 2,
+      "visual": "濡れた舗装を本人視点で歩く",
+      "meaning": "昨日の雨が残る道でも今を歩く",
+      "source_id": "4310191",
+      "role": "memory",
+      "source_status": "real_clip_download_pending",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S05",
+      "chapter": 2,
+      "visual": "水たまりに住宅が映る",
+      "meaning": "過去が現在に映り込む",
+      "source_id": "missing-reflected-house",
+      "role": "comparison",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S06",
+      "chapter": 2,
+      "visual": "光のある住宅街へ出る",
+      "meaning": "今日の光を選んで歩く",
+      "source_id": "40456181",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S07",
+      "chapter": 3,
+      "visual": "違う角度で歩く足",
+      "meaning": "今日の道を前へ進む",
+      "source_id": "4464905",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S08",
+      "chapter": 3,
+      "visual": "道が曲がる",
+      "meaning": "知らなかった先へ進む",
+      "source_id": "missing-turn-corner",
+      "role": "action",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S09",
+      "chapter": 3,
+      "visual": "横断歩道を渡る",
+      "meaning": "同じ日常の誰かと交差",
+      "source_id": "34892787",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S10",
+      "chapter": 3,
+      "visual": "人の行き来を見ながら進む",
+      "meaning": "世界に開かれた現在",
+      "source_id": "37601314",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S11",
+      "chapter": 4,
+      "visual": "久しぶりの古い路地",
+      "meaning": "覚えている道の記憶",
+      "source_id": "7312217",
+      "role": "memory",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S12",
+      "chapter": 4,
+      "visual": "変わった街の建物",
+      "meaning": "過去と今は同じではない",
+      "source_id": "40409379",
+      "role": "comparison",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S13",
+      "chapter": 4,
+      "visual": "踏切を横から見る",
+      "meaning": "あの頃と同じ鐘が鳴る",
+      "source_id": "37108132",
+      "role": "memory",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S14",
+      "chapter": 4,
+      "visual": "踏切の向こうを歩く人",
+      "meaning": "過去の僕と今の僕がすれ違う比喩",
+      "source_id": "missing-crossing-two-perspectives",
+      "role": "comparison",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S15",
+      "chapter": 4,
+      "visual": "新しい通りへ歩く",
+      "meaning": "記憶を持って今に戻る",
+      "source_id": "3723683",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S16",
+      "chapter": 5,
+      "visual": "歩いていた足が止まる",
+      "meaning": "止まることを選ぶ",
+      "source_id": "missing-foot-stop",
+      "role": "pause",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S17",
+      "chapter": 5,
+      "visual": "踏切で待つ人",
+      "meaning": "急がなくてもよい",
+      "source_id": "12769743",
+      "role": "pause",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S18",
+      "chapter": 5,
+      "visual": "風に揺れる草花",
+      "meaning": "止まったから初めて見えるもの",
+      "source_id": "10695941",
+      "role": "discovery",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S19",
+      "chapter": 5,
+      "visual": "静けさの中で深呼吸",
+      "meaning": "立ち止まる時間を肯定する",
+      "source_id": "missing-breath-pause",
+      "role": "pause",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S20",
+      "chapter": 6,
+      "visual": "道路の脇に静かに咲く赤い小さな花",
+      "meaning": "足を止めて初めて見える日常の小さな美しさ",
+      "source_id": "27571663",
+      "role": "discovery",
+      "source_status": "real_three_frame_review_candidate",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S21",
+      "chapter": 6,
+      "visual": "花を見つめる視線",
+      "meaning": "いまの自分が景色を再発見する",
+      "source_id": "missing-flower-eye-line",
+      "role": "discovery",
+      "source_status": "missing",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S22",
+      "chapter": 6,
+      "visual": "木々の間から差す柔らかい光",
+      "meaning": "特別ではない幸せ",
+      "source_id": "4435691",
+      "role": "discovery",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S23",
+      "chapter": 7,
+      "visual": "新しい角度で靴が一歩",
+      "meaning": "昔に戻るのではなく進む",
+      "source_id": "3998656",
+      "role": "action",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S24",
+      "chapter": 7,
+      "visual": "道が遠くに続いている",
+      "meaning": "未来へ延びる路地に視点が進む。ただし前進する実動作を最終検証",
+      "source_id": "8729574",
+      "role": "future",
+      "source_status": "real_three_frame_review_candidate",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    },
+    {
+      "shot_id": "S25",
+      "chapter": 7,
+      "visual": "空と静かな街の余韻",
+      "meaning": "未来は閉じない",
+      "source_id": "31432212",
+      "role": "future",
+      "source_status": "candidate_not_finally_approved",
+      "time_start": null,
+      "time_end": null,
+      "final_authorized": false
+    }
+  ],
+  "hard_rules": [
+    "no source_id reuse even for alternate trims",
+    "no consecutive stock montage without narrative action",
+    "no new face promoted as protagonist",
+    "every shot must change action/time/emotion",
+    "lyric timestamps not invented",
+    "visual color stays faded jacket reference",
+    "don't render until next explicit approval"
+  ],
+  "missing_count": 8,
+  "parent_version": "V33",
+  "exclusions": [
+    {
+      "source_id": 37239481,
+      "reason": "大きな花壇で歌詞の小さな花とは異なる"
+    },
+    {
+      "source_id": 5034328,
+      "reason": "靴の連続性が崩れる"
+    },
+    {
+      "source_id": 6136988,
+      "reason": "知らない人物が主役のように見える"
+    },
+    {
+      "source_id": 3031954,
+      "reason": "曲がり角を実際に曲がる動作がない"
+    },
+    {
+      "source_id": 40191674,
+      "reason": "元動画容量制限で取得検証未完了"
+    }
+  ],
+  "story_transition_rules": [
+    {
+      "from": "S01",
+      "to": "S03",
+      "check": "同じ人物の足/靴としてつながる。つながらないなら別視点にしない"
+    },
+    {
+      "from": "S03",
+      "to": "S04",
+      "check": "実際に家を出て雨上がりの道へ移動する"
+    },
+    {
+      "from": "S11",
+      "to": "S15",
+      "check": "古い道→変わった街→踏切→現在の道を視覚で対比"
+    },
+    {
+      "from": "S16",
+      "to": "S20",
+      "check": "足が完全に止まったあと初めて小さな花を見つける"
+    },
+    {
+      "from": "S20",
+      "to": "S24",
+      "check": "花を見る静けさから新しい道を前へ進む"
+    }
+  ],
+  "no_reuse_policy": "One source asset per finished shot. Same footage re-trim or alternate crop still counts as reuse. Only purposeful visual callback with separately approved distinct source.",
+  "not_verified": [
+    "all source full motion",
+    "word-level lyric cue positions",
+    "physical stopped-foot motion",
+    "character footwear continuity",
+    "image semantic matching by CV model"
+  ],
+  "render_approval_only": "動画作成 or 動画生成開始"
+}
