@@ -37,6 +37,11 @@ def audit(plan):
     if shots[0]["chapter"]!=1 or shots[-1]["chapter"]!=7:failures.append("life arc bounds")
     if "4376498" in seen and "27571663" not in seen:
         failures.append("sprout foreshadowing without actual flower")
+    # Low pixel movement can mean that the actor has already left the frame.
+    # Pexels 4464905 at 5s-8s was visually checked and shows empty pavement.
+    stop_shot=next((s for s in shots if s["shot_id"]=="S16"),None)
+    if stop_shot and str(stop_shot["source_id"])=="4464905":
+        failures.append("false foot stop: source 4464905 shows empty pavement at quiet interval")
     selected=[s["shot_id"] for s in shots if s["source_status"]=="real_three_frame_review_candidate"]
     missing=[s["shot_id"] for s in shots if s["source_status"]=="missing"]
     return {"code_qa_pass":not failures,"shot_count":len(shots),"candidate_photo_video_count":len(shots)-len(missing),
