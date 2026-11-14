@@ -1,0 +1,77 @@
+{
+  "version": "V15",
+  "source_method": "Pexels official pages examined 2026-11-14",
+  "note": "Source dimensions, fps and license text verified on provider pages; actual motion/frames NOT verified; website download manually or authorized API only.",
+  "candidates": [
+    {
+      "id": "pexels-4953053",
+      "scene": "03_shoes",
+      "url": "https://www.pexels.com/video/low-angle-view-of-a-person-putting-on-the-shoe-and-tying-it-4953053/",
+      "author": "ArtHouse Studio",
+      "width": 3840,
+      "height": 2160,
+      "fps": 23.98,
+      "duration": 9,
+      "source_license": "Pexels Free",
+      "visual_review": "pending",
+      "description": "white sneakers lacing indoors",
+      "priority": 1
+    },
+    {
+      "id": "pexels-8994347",
+      "scene": "03_shoes",
+      "url": "https://www.pexels.com/video/a-person-putting-on-a-shoe-8994347/",
+      "author": "Alena Darmel",
+      "width": 2160,
+      "height": 3840,
+      "fps": 25,
+      "duration": 9,
+      "source_license": "Pexels Free",
+      "visual_review": "pending",
+      "description": "white sneaker indoors vertical",
+      "priority": 2
+    },
+    {
+      "id": "pexels-8995265",
+      "scene": "03_shoes",
+      "url": "https://www.pexels.com/video/a-person-putting-on-shoes-8995265/",
+      "author": "Alena Darmel",
+      "width": null,
+      "height": null,
+      "fps": null,
+      "duration": null,
+      "source_license": "Pexels Free",
+      "visual_review": "pending",
+      "description": "white sneaker on wooden floor, properties require fetch",
+      "priority": 3
+    },
+    {
+      "id": "pexels-15537744",
+      "scene": "06_morning_street",
+      "url": "https://www.pexels.com/video/a-street-with-no-cars-on-it-and-a-street-sign-15537744/",
+      "author": "Yauheni Anhaliuk",
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "duration": 9,
+      "source_license": "Pexels Free",
+      "visual_review": "pending",
+      "description": "suburban street morning but vertical",
+      "priority": 1
+    },
+    {
+      "id": "pexels-35142894",
+      "scene": "06_morning_street",
+      "url": "https://www.pexels.com/video/early-morning-street-scene-with-people-35142894/",
+      "author": "Anil Sharma",
+      "width": 1080,
+      "height": 1920,
+      "fps": 50,
+      "duration": 8,
+      "source_license": "Pexels Free",
+      "visual_review": "pending",
+      "description": "sunrise street with gathered people; story mismatch possible",
+      "priority": 2
+    }
+  ]
+}
