@@ -1,0 +1,27 @@
+{
+  "version": "V35",
+  "listings": [
+    {
+      "id": 37239481,
+      "shot": "S20",
+      "title": "Vibrant Flower Bed Along Sunny Urban Street",
+      "url": "https://www.pexels.com/video/vibrant-flower-bed-along-sunny-urban-street-37239481/",
+      "why": "real flowers on quiet roadside; ensure small scale and not flower bed as centerpiece"
+    },
+    {
+      "id": 27571663,
+      "shot": "S20",
+      "title": "A red flower in the foreground of a street",
+      "url": "https://www.pexels.com/video/a-red-flower-in-the-foreground-of-a-street-27571663/",
+      "why": "flower foreground and road behind; may be too prominent/ornamental"
+    },
+    {
+      "id": 3031954,
+      "shot": "S08",
+      "title": "Street corner",
+      "url": "https://www.pexels.com/video/low-angle-footage-of-pedestrian-traffic-of-a-city-street-corner-with-a-stop-light-at-daytime-3031954/",
+      "why": "already rejected for literal corner turning; don't reconsider unless motion proves action"
+    }
+  ],
+  "review": "not approved pending actual-frame analysis"
+}
