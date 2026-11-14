@@ -1,0 +1,30 @@
+name: V32 corrected seven-chapter full render
+on:
+  push:
+    paths:
+      - .github/workflows/v32-approved-retry-once.yml
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.event.head_commit.message == 'Retry explicitly authorized V32 after footage duration correction'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python -m unittest -v test_v32_story_renderer.py test_v31_renderer_adapter.py
+      - name: Render V32 corrected color-graded full song
+        run: python -u v32_story_renderer.py --authorize-render --output v32_full_7chapter_silent.mp4
+      - name: Verify output
+        run: |
+          test -s v32_full_7chapter_silent.mp4
+          ls -lh v32_full_7chapter_silent.mp4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v32-seven-chapter-full-199s-silent
+          path: v32_full_7chapter_silent.mp4
+          retention-days: 3
