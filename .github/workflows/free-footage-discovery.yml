@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run offline adapter tests
-        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py test_v12.py test_v13.py test_v14.py test_v15.py test_v16.py
+        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py test_v12.py test_v13.py test_v14.py test_v15.py test_v16.py test_v17.py
       - name: Search live Wikimedia Commons video metadata
         run: python v06.py
       - name: Install free FFmpeg binary
@@ -38,6 +38,8 @@ jobs:
         run: python v15_candidates.py
       - name: V16 produce honest pre-render readiness manifest (no media output)
         run: python v16_prelaunch.py
+      - name: V17 validate new 16:9 morning neighborhood candidate metadata
+        run: python v17_neighborhood_gate.py
       - name: Upload review data
         if: always()
         uses: actions/upload-artifact@v4
