@@ -1,0 +1,25 @@
+name: V35 inspect foot stopping candidate real frames
+on:
+  push:
+    paths:
+      - .github/workflows/v35-pause-stills.yml
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python v35_pause_frames.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v35-actual-foot-pause-frames
+          path: |
+            v35_pause_review/report.json
+            v35_pause_review/*.jpg
+          retention-days: 3
