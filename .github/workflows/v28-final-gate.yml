@@ -1,0 +1,27 @@
+name: V28 full-length pre-render verification (no media generated)
+on:
+  push:
+    paths:
+      - .github/workflows/v28-final-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prelaunch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run all V28 selection/renderer/private mux unit tests
+        run: python -m unittest -v test_v26.py test_v27.py test_v28.py test_v28_renderer.py test_v28_final_prelaunch.py test_v28_full_private_mux.py
+      - name: Verify 199.872s soundtrack-independent shot plan
+        run: python v28_final_prelaunch.py
+      - name: No rendering performed - deliver plan and QA
+        uses: actions/upload-artifact@v4
+        with:
+          name: v28-full-song-prelaunch-json
+          path: discovery_output/v28_final_prelaunch.json
+          retention-days: 3
