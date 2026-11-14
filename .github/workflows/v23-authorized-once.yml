@@ -1,0 +1,40 @@
+name: V23 one-time authorized 30s silent rough
+on:
+  push:
+    paths:
+      - .github/workflows/v23-authorized-once.yml
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.event.head_commit.message == 'Authorize V23 silent render once 2026-11-14'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free FFmpeg binary
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Preflight and renderer tests
+        run: |
+          python -m unittest -v test_v23.py test_v23_private_mux.py
+          python v23_prelaunch.py
+      - name: Render original real-stock footage silently
+        run: python v23_video_only.py --output v23_silent_rough_30s.mp4 --authorize-render
+      - name: Inspect output
+        run: |
+          python - <<'PY'
+          import os
+          p='v23_silent_rough_30s.mp4'
+          assert os.path.isfile(p) and os.path.getsize(p)>20000
+          print('silent_video_bytes',os.path.getsize(p))
+          PY
+      - name: Upload 30s video artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v23-silent-rough-30s
+          path: v23_silent_rough_30s.mp4
+          retention-days: 3
