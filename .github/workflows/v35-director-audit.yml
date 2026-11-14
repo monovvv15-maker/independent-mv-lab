@@ -1,0 +1,27 @@
+name: V35 director continuity and reuse QA - no MV generation
+on:
+  push:
+    paths:
+      - .github/workflows/v35-director-audit.yml
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run narrative and footage reuse tests
+        run: python -m unittest -v test_v33.py test_v35.py
+      - name: Report unfilled causal actions, no rendered video
+        run: python v35_director_audit.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v35-director-readiness-no-video
+          path: |
+            discovery_output/v35_director_qa.json
+            catalog/v35_story_continuity_working_plan.json
+          retention-days: 7
