@@ -1,0 +1,35 @@
+name: V32 author-approved seven-chapter 199s MV rendering
+on:
+  push:
+    paths:
+      - .github/workflows/v32-approved-once.yml
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.event.head_commit.message == 'Author explicitly approved V32 video generation 2026-11-14'
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Validate 7-chapter story and jacket-style renderer
+        run: python -m unittest -v test_v29.py test_v30.py test_v31.py test_v31_renderer_adapter.py test_v32_story_renderer.py
+      - name: Render V32 full length silent storyboard film
+        run: python -u v32_story_renderer.py --authorize-render --output v32_story_film_199s_silent.mp4
+      - name: Verify rendered movie exists
+        run: |
+          python - <<'PY'
+          import os
+          file='v32_story_film_199s_silent.mp4'
+          assert os.path.isfile(file) and os.path.getsize(file)>200000
+          print('rendered_bytes=',os.path.getsize(file))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v32-story-first-vintage-silent-film
+          path: v32_story_film_199s_silent.mp4
+          retention-days: 3
