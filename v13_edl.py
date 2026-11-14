@@ -4,7 +4,7 @@ No media is generated or downloaded here.
 import json
 from pathlib import Path
 
-MIN_FPS=24
+MIN_FPS=23.9  # Accept cinema 23.976/23.98 source; convert output to 30fps
 TARGET_SECONDS=30
 def check_edl(edl):
     errors=[]
