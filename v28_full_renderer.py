@@ -8,6 +8,7 @@ This is a PROVISIONAL rough: beat candidates, not verified lyric timestamps.
 import argparse,json,hashlib,re,subprocess,tempfile
 from pathlib import Path
 from v27_music_cut_planner import plan,validate
+from v28_final_prelaunch import run as check_prelaunch
 from v18_pexels_review import get_video
 
 SONG_DURATION=199.872
@@ -51,6 +52,9 @@ def main():
     args=p.parse_args()
     if not args.authorize_render:raise SystemExit('Must have explicit 動画生成開始 approval')
     catalog=json.loads(Path(args.catalog).read_text(encoding='utf-8'))['items']
+    gate=check_prelaunch(catalog)
+    if not gate['technical_preflight_pass']:
+        raise ValueError('Source QA incomplete: '+str(gate['errors']))
     cuts=cutplan(catalog)
     by_id={x['id']:x for x in catalog}
     ffmpeg=ffmpeg_bin()
