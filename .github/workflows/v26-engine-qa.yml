@@ -1,4 +1,5 @@
 name: V26 footage sample and editorial planner QA
+# Revised: semantic eligibility is independent of repetition penalty.
 on:
   push:
     paths:
