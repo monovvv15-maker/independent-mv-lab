@@ -55,11 +55,11 @@
     {
       "shot_id": "S04",
       "chapter": 2,
-      "visual": "濡れた舗装を本人視点で歩く",
-      "meaning": "昨日の雨が残る道でも今を歩く",
-      "source_id": "4310191",
+      "visual": "雨上がりの濡れた路面を見つめる",
+      "meaning": "昨日の雨が残る道を、今の自分が見ている",
+      "source_id": "13749224",
       "role": "memory",
-      "source_status": "real_clip_download_pending",
+      "source_status": "candidate_not_finally_approved",
       "time_start": null,
       "time_end": null,
       "final_authorized": false
@@ -348,6 +348,11 @@
     {
       "source_id": 40191674,
       "reason": "元動画容量制限で取得検証未完了"
+    },
+    {
+      "source_id": 4310191,
+      "reason": "黒い靴の一人称視点は冒頭の白靴主人公と連続しない。別人の日常として別章の候補だが現時点では不採用",
+      "evidence_run": 43574362051
     }
   ],
   "story_transition_rules": [
