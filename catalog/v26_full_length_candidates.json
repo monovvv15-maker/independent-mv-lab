@@ -209,7 +209,9 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted",
+      "retrieval_note": "V28 last source Actions 43553557129: real download and frames successful"
     },
     {
       "id": 7312217,
@@ -517,7 +519,9 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted",
+      "retrieval_note": "V26 original sample Actions 43552424834: real download and frames successful"
     },
     {
       "id": 40759791,
