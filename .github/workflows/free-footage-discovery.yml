@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run offline adapter tests
-        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py
+        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py
       - name: Search live Wikimedia Commons video metadata
         run: python v06.py
       - name: Install free FFmpeg binary
@@ -26,6 +26,8 @@ jobs:
         run: python v08_mixkit.py
       - name: Produce V09 30-second editorial storyboard (no rendering)
         run: python v09_storyboard.py
+      - name: V10 fail-closed audiovisual preflight (does not render)
+        run: python v10_preflight.py
       - name: Upload review data
         if: always()
         uses: actions/upload-artifact@v4
