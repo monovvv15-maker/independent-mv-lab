@@ -1,0 +1,49 @@
+{
+  "version": "V34",
+  "basis": "Pexels public listings",
+  "candidates": [
+    {
+      "shot_id": "S02",
+      "id": 5034328,
+      "url": "https://www.pexels.com/video/person-tying-his-shoelace-5034328/",
+      "meaning": "shoe laces, inspect outfit continuity",
+      "status": "listing_only"
+    },
+    {
+      "shot_id": "S02",
+      "id": 8992070,
+      "url": "https://www.pexels.com/video/a-person-tying-a-shoelace-and-folding-pants-8992070/",
+      "meaning": "interior lace closeup, vertical crop",
+      "status": "listing_only"
+    },
+    {
+      "shot_id": "S05",
+      "id": 27865901,
+      "url": "https://www.pexels.com/video/a-puddle-of-water-on-the-road-with-a-train-27865901/",
+      "meaning": "rain puddle texture with railway memory",
+      "status": "listing_only"
+    },
+    {
+      "shot_id": "S03",
+      "id": 6136988,
+      "url": "https://www.pexels.com/video/people-going-out-from-an-open-doors-6136988/",
+      "meaning": "door transition, risk: unrelated people as protagonist",
+      "status": "listing_only"
+    },
+    {
+      "shot_id": "S24",
+      "id": 8729574,
+      "url": "https://www.pexels.com/video/point-of-view-of-a-person-walking-on-the-street-8729574/",
+      "meaning": "forward moving POV",
+      "status": "listing_only"
+    },
+    {
+      "shot_id": "S08",
+      "id": 3031954,
+      "url": "https://www.pexels.com/video/low-angle-footage-of-pedestrian-traffic-of-a-city-street-corner-with-a-stop-light-at-daytime-3031954/",
+      "meaning": "turning the corner; must actually show turn",
+      "status": "listing_only"
+    }
+  ],
+  "authorization": "footage QA only, no output video"
+}
