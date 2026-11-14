@@ -1,0 +1,56 @@
+{
+  "version": "V33",
+  "note": "Pexels listing candidates only, NOT source frame reviewed or approved. Do not automatically map to film.",
+  "candidates": [
+    {
+      "shot_id": "S08",
+      "source_id": 3031954,
+      "url": "https://www.pexels.com/video/low-angle-footage-of-pedestrian-traffic-of-a-city-street-corner-with-a-stop-light-at-daytime-3031954/",
+      "fit": "turning street corner",
+      "dimensions": "1920x1080",
+      "duration": 67,
+      "fps": 23.98,
+      "status": "listing_verified_frames_unreviewed"
+    },
+    {
+      "shot_id": "S14",
+      "source_id": 36333696,
+      "url": "https://www.pexels.com/video/urban-street-scene-with-cyclist-and-pedestrian-36333696/",
+      "fit": "pedestrian passing neighborhood crossing, not literal past self",
+      "dimensions": "3840x2160",
+      "duration": 14,
+      "fps": 24,
+      "status": "listing_verified_frames_unreviewed"
+    },
+    {
+      "shot_id": "S23",
+      "source_id": 5665059,
+      "url": "https://www.pexels.com/video/a-person-walking-on-a-sidewalk-5665059/",
+      "fit": "another angle of footsteps near the future, verify actual shoes and framing",
+      "dimensions": "not yet confirmed",
+      "duration": null,
+      "fps": null,
+      "status": "listing_verified_frames_unreviewed"
+    },
+    {
+      "shot_id": "S24",
+      "source_id": 8729574,
+      "url": "https://www.pexels.com/video/point-of-view-of-a-person-walking-on-the-street-8729574/",
+      "fit": "road ahead, forward camera movement for future chapter",
+      "dimensions": "3840x2160",
+      "duration": 9,
+      "fps": 30,
+      "status": "listing_verified_frames_unreviewed"
+    },
+    {
+      "shot_id": "S20",
+      "source_id": 12787609,
+      "url": "https://www.pexels.com/video/hand-holding-a-flower-on-a-roadside-12787609/",
+      "fit": "small flower, but hand holding flower differs from naturally noticing roadside flower",
+      "dimensions": "2160x3840",
+      "duration": 5,
+      "fps": 30,
+      "status": "semantic_mismatch_not_approved"
+    }
+  ]
+}
