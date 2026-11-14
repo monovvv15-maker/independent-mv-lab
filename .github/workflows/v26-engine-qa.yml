@@ -1,0 +1,45 @@
+name: V26 footage sample and editorial planner QA
+on:
+  push:
+    paths:
+      - .github/workflows/v26-engine-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free FFmpeg helper
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Unit tests for real selection engine
+        run: python -m unittest -v test_v26.py
+      - name: Create full 199.872s proposed edit decision list
+        run: python v26_editorial_planner.py
+      - name: Inspect selected official stock footage frames only
+        run: python v26_footage_review.py
+      - name: Record sample success and failure without silently passing
+        run: |
+          python - <<'PY'
+          import json
+          items=json.load(open('v18_review/v18_report.json'))
+          good=[x['id'] for x in items if x['status']=='frames_extracted']
+          missing=[x['id'] for x in items if x['status']!='frames_extracted']
+          print({'frames_obtained':good,'missing':missing})
+          if len(good)<4:raise SystemExit('Need >=4 sample clips before advancing')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v26-editorial-footage-review
+          path: |
+            discovery_output/v26_proposed_edl.json
+            v18_review/index.html
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 3
