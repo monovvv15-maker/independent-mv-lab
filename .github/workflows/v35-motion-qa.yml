@@ -1,0 +1,26 @@
+name: V35 analyze existing walking footage for quiet motion windows
+on:
+  push:
+    paths:
+      - .github/workflows/v35-motion-qa.yml
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python -m unittest -v test_v35_motion.py
+      - name: Analyze already shortlisted real videos, no MV generation
+        run: python v35_motion_screen.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v35-motion-metadata-only
+          path: discovery_output/v35_motion_screen.json
+          retention-days: 4
