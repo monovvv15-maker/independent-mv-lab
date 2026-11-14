@@ -1,0 +1,39 @@
+name: V28 authorized one-time full rough render
+on:
+  push:
+    paths:
+      - .github/workflows/v28-approved-once-20261114.yml
+permissions:
+  contents: read
+jobs:
+  render:
+    if: github.event.head_commit.message == 'Author approved V28 full movie generation 2026-11-14'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free FFmpeg binary
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Verify source acquisition records and render unit tests
+        run: |
+          python -m unittest -v test_v28_renderer.py test_v28_final_prelaunch.py test_v28_full_private_mux.py
+          python v28_final_prelaunch.py
+      - name: Render authorized full-length 199.872s silent rough
+        run: python -u v28_full_renderer.py --authorize-render --output v28_full_silent_rough_199s.mp4
+      - name: Validate resulting MP4
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          p='v28_full_silent_rough_199s.mp4'
+          assert os.path.isfile(p) and os.path.getsize(p)>100000
+          print('V28 full rendered bytes:',os.path.getsize(p))
+          PY
+      - name: Save full-length rough for private audio mux
+        uses: actions/upload-artifact@v4
+        with:
+          name: v28-full-199s-silent-rough
+          path: v28_full_silent_rough_199s.mp4
+          retention-days: 3
