@@ -1,0 +1,60 @@
+{
+  "version": "V34",
+  "method": "Actual three frame stills per full downloaded source, not complete motion review",
+  "action_run": 43568745383,
+  "items": [
+    {
+      "id": 5034328,
+      "shot": "S02",
+      "decision": "reject",
+      "reason": "sporty white Nike athletic shoe outdoors; does not carry over from V32 intro shoe as same person"
+    },
+    {
+      "id": 8992070,
+      "shot": "S02",
+      "decision": "conditional",
+      "reason": "shoelace tying on wood floor is right action but portrait video and outfit continuity unverified"
+    },
+    {
+      "id": 27865901,
+      "shot": "S05",
+      "decision": "conditional",
+      "reason": "rain ripples on street are clear, but no reflected house is visible; cannot claim literal memory reflection"
+    },
+    {
+      "id": 6136988,
+      "shot": "S03",
+      "decision": "reject",
+      "reason": "person in red shirt enters frame after door detail; risks another unrelated protagonist"
+    },
+    {
+      "id": 8729574,
+      "shot": "S24",
+      "decision": "conditional",
+      "reason": "old stone alley depth is suitable for memory/future; 0.3s to 4.5s stills show small perspective movement, not sufficient to establish forward POV"
+    },
+    {
+      "id": 3031954,
+      "shot": "S08",
+      "decision": "reject_for_turn",
+      "reason": "street intersection and cyclist; does not show character turning a corner"
+    }
+  ],
+  "new_candidates": [
+    {
+      "id": 40191674,
+      "shot": "S20",
+      "url": "https://www.pexels.com/video/tranquil-roadside-cosmos-flowers-in-bloom-40191674/",
+      "status": "listing_only",
+      "reason": "actual roadside flowers, 16:9"
+    },
+    {
+      "id": 4376498,
+      "shot": "S20",
+      "url": "https://www.pexels.com/video/a-plant-sprung-out-from-the-concrete-pavement-4376498/",
+      "status": "listing_only",
+      "reason": "small overlooked plant through pavement crack, possibly stronger visual story"
+    }
+  ],
+  "remaining_qa": "motion, similarity, lyrics and timing not verified; no render authorized"
+}
