@@ -1,0 +1,58 @@
+{
+  "version": "V31",
+  "source": "Official Pexels listings; no full-motion approval",
+  "candidates": [
+    {
+      "id": 4170781,
+      "url": "https://www.pexels.com/video/close-up-shot-of-a-white-flower-4170781/",
+      "scene": "small_white_flower",
+      "fit": "chapter6",
+      "duration": 15,
+      "width": 1920,
+      "height": 1080,
+      "fps": 23.98,
+      "status": "page_metadata_only",
+      "risk": "visual crop and material continuity pending"
+    },
+    {
+      "id": 40504877,
+      "url": "https://www.pexels.com/video/serene-walk-through-blooming-path-40504877/",
+      "scene": "person_notices_flowers",
+      "fit": "chapter6",
+      "duration": 21,
+      "width": 3840,
+      "height": 2160,
+      "fps": null,
+      "status": "page_metadata_only",
+      "risk": "woman might be read as new protagonist; consider only as world montage"
+    },
+    {
+      "id": 12787609,
+      "url": "https://www.pexels.com/video/hand-holding-a-flower-on-a-roadside-12787609/",
+      "scene": "small_roadside_flower",
+      "fit": "chapter6",
+      "duration": 5,
+      "width": 2160,
+      "height": 3840,
+      "fps": 30,
+      "status": "page_metadata_only",
+      "risk": "vertical crop and face/hand consistency"
+    },
+    {
+      "id": 4953053,
+      "url": "https://www.pexels.com/video/low-angle-view-of-a-person-putting-on-the-shoe-and-tying-it-4953053/",
+      "scene": "opening_shoe_barefoot",
+      "fit": "chapter1",
+      "duration": 9,
+      "width": 3840,
+      "height": 2160,
+      "fps": 23.98,
+      "status": "prior_source_visual_sampled",
+      "risk": "single shot 9s not whole 25s introduction; don't loop"
+    }
+  ],
+  "missing": [
+    "foot naturally stops walking; no suitable verified clip yet",
+    "quiet transition from house to wet pavement"
+  ]
+}
