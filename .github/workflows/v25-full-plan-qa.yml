@@ -1,0 +1,27 @@
+name: V25 full song storyboard QA only
+on:
+  push:
+    paths:
+      - .github/workflows/v25-full-plan-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate narrative and full duration
+        run: |
+          python -m unittest -v test_v25.py
+          python v25_full_length.py
+      - name: Upload JSON plan only
+        uses: actions/upload-artifact@v4
+        with:
+          name: v25-full-song-plan-no-video
+          path: discovery_output/v25_whole_song_plan.json
+          retention-days: 3
