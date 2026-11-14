@@ -1,0 +1,38 @@
+name: V31 storyboard, lyric and jacket palette QA (no render)
+on:
+  push:
+    paths:
+      - .github/workflows/v31-story-preflight.yml
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test storyboard and color treatment
+        run: python -m unittest -v test_v29.py test_v30.py test_v31.py
+      - name: Verify lyric story order (no guessed timestamps)
+        run: |
+          python v31_style_engine.py
+          python - <<'PY'
+          import json
+          p=json.load(open('catalog/v31_lyric_story_event_order.json'))
+          e=p['events']
+          assert len(e)==16
+          assert all('start' not in x and 'end' not in x for x in e)
+          assert p['do_not_use_as_fixed_timestamps']
+          print('16 lyric milestones; all timing unverified')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v31-story-first-prelaunch-no-media
+          path: |
+            discovery_output/v31_preflight.json
+            catalog/v31_gap_candidates.json
+            catalog/v31_lyric_story_event_order.json
+          retention-days: 7
