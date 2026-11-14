@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run offline adapter tests
-        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py
+        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py test_v12.py
       - name: Search live Wikimedia Commons video metadata
         run: python v06.py
       - name: Install free FFmpeg binary
@@ -30,6 +30,8 @@ jobs:
         run: python v10_preflight.py
       - name: V11 inspect official Mixkit exposed previews (no MV render)
         run: python v11_clip_previews.py
+      - name: V12 independent preflight (must remain blocked without visual and timing approval)
+        run: python v12_gate.py
       - name: Upload review data
         if: always()
         uses: actions/upload-artifact@v4
