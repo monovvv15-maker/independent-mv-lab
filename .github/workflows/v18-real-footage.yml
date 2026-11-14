@@ -1,0 +1,43 @@
+name: V18 Pexels real-footage preflight
+on:
+  push:
+    paths:
+      - v18_pexels_review.py
+      - test_v18.py
+      - .github/workflows/v18-real-footage.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install FFmpeg helper
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Run safety tests
+        run: python -m unittest -v test_v18.py
+      - name: Download two official Pexels clips transiently and extract frames
+        run: python v18_pexels_review.py
+      - name: Assert at least one real clip inspected
+        run: |
+          python - <<'PY'
+          import json
+          a=json.load(open('v18_review/v18_report.json'))
+          if not any(x['status']=='frames_extracted' for x in a):
+              raise SystemExit("No real videos verified")
+          PY
+      - name: Upload only review stills / text, never raw videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-pexels-still-review
+          path: |
+            v18_review/index.html
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 3
