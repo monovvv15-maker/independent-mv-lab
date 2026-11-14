@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run offline adapter tests
-        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py test_v12.py test_v13.py test_v14.py test_v15.py test_v16.py test_v17.py test_v19.py
+        run: python -m unittest -v test_v03.py test_v06.py test_v08.py test_v09.py test_v10.py test_v11.py test_v12.py test_v13.py test_v14.py test_v15.py test_v16.py test_v17.py test_v19.py test_v20.py
       - name: Search live Wikimedia Commons video metadata
         run: python v06.py
       - name: Install free FFmpeg binary
@@ -42,6 +42,8 @@ jobs:
         run: python v17_neighborhood_gate.py
       - name: V19 provisional timeline without invented vocal timings
         run: python v19_timeline.py
+      - name: V20 export private-listener timing template (no audio)
+        run: python v20_sync.py
       - name: Upload review data
         if: always()
         uses: actions/upload-artifact@v4
