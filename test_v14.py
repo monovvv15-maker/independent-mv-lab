@@ -1,4 +1,5 @@
 import unittest,tempfile
+from unittest.mock import patch
 from pathlib import Path
 from v14_renderer import commands
 class RendererTests(unittest.TestCase):
@@ -13,7 +14,8 @@ class RendererTests(unittest.TestCase):
    audio=Path(d)/"song.mp3";clip=Path(d)/"clip.mp4"
    audio.write_bytes(b"mock");clip.write_bytes(b"mock")
    item={"start":0,"end":30,"license_verified":True,"visual_review":"approved","audio_sync":"verified","source_fps":30,"full_video_downloaded":True,"crop_approved":True,"protagonist":"no_person","local_video":str(clip)}
-   c=commands([item],audio,Path(d)/"out.mp4")
+   with patch('v14_renderer.shutil.which',return_value='/usr/bin/ffmpeg'):
+    c=commands([item],audio,Path(d)/"out.mp4")
    self.assertIn("libx264",c)
    self.assertIn("concat=n=1",c[c.index("-filter_complex")+1])
 if __name__=="__main__":unittest.main()
