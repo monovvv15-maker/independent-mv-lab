@@ -28,9 +28,12 @@ def propose(catalog,chapters=CHAPTERS):
     for ch,(start,end,keywords) in enumerate(chapters,1):
         cursor=start
         while cursor<end-0.001:
-            choices=sorted(catalog,key=lambda c:(-score(c,keywords,prev,used),c["id"]))
-            if not choices or score(choices[0],keywords,prev,used)<0:
-                raise ValueError("Insufficient fresh eligible footage in chapter "+str(ch))
+            eligible=[clip for clip in catalog if
+                any(keywords.get(tag,0)>0 for tag in clip.get("tags",[]))
+                and score(clip,keywords,None,{})>=0]
+            choices=sorted(eligible,key=lambda c:(-score(c,keywords,prev,used),c["id"]))
+            if not choices:
+                raise ValueError("No semantically eligible footage in chapter "+str(ch))
             chosen=choices[0]
             dur=min(MAX_SHOT,float(chosen["duration"]),end-cursor)
             shots.append({"chapter":ch,"start":round(cursor,3),"end":round(cursor+dur,3),
