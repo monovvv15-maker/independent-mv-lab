@@ -1,0 +1,24 @@
+name: V27 audio-measured cut and footage planner QA
+on:
+  push:
+    paths:
+      - .github/workflows/v27-timing-qa.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest -v test_v26.py test_v27.py
+      - run: python v27_music_cut_planner.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v27-timed-proposed-edl
+          path: discovery_output/v27_music_timed_selection.json
+          retention-days: 3
