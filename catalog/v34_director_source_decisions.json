@@ -1,0 +1,116 @@
+{
+  "version": "V34",
+  "parent": "catalog/v33_narrative_shot_plan.json",
+  "approval": "Already approved to research, implement, test. New video only on explicit 動画作成 / 動画生成開始.",
+  "render_authorized": false,
+  "video_generated": false,
+  "source_evidence": {
+    "3031954": {
+      "status": "reject_for_S08",
+      "reason": "street/cyclist but no corner-turn action",
+      "evidence_run": 43568745383
+    },
+    "4376498": {
+      "status": "conditional_as_foreshadowing",
+      "reason": "real tiny green plant through asphalt, not a blooming flower; place before lyric flower as a visual hint",
+      "evidence_run": 43568994709,
+      "sha256": "f59a30b53e42a2c2c069f65f63ca88e10c9f24c256ba72f36bac1dd6997de0ff"
+    },
+    "5034328": {
+      "status": "reject",
+      "reason": "athletic shoes outdoors not same character",
+      "evidence_run": 43568745383
+    },
+    "6136988": {
+      "status": "reject",
+      "reason": "unrelated woman becomes protagonist",
+      "evidence_run": 43568745383
+    },
+    "8729574": {
+      "status": "conditional",
+      "reason": "narrow town street, camera progression needs full-motion proof",
+      "evidence_run": 43568745383
+    },
+    "8992070": {
+      "status": "conditional",
+      "reason": "actual shoelace motion, portrait; may use only if a distinct person is introduced",
+      "evidence_run": 43568745383
+    },
+    "27865901": {
+      "status": "conditional",
+      "reason": "street puddle ripples, no house reflection",
+      "evidence_run": 43568745383
+    },
+    "40191674": {
+      "status": "unavailable",
+      "reason": "official original too large for 100MiB temporary download QA",
+      "evidence_run": 43568994709
+    }
+  },
+  "storyboard_revision": [
+    {
+      "phase": "beginning",
+      "change": "one recognizable person begins tying shoe, camera stays on footwear, door montage only if actual continuous action",
+      "do_not": "cut to unknown woman exiting"
+    },
+    {
+      "phase": "walking",
+      "change": "progressive geographic change: interior > wet road > turn > crossing > town",
+      "do_not": "cut between random footages with no directional or temporal cue"
+    },
+    {
+      "phase": "memory",
+      "change": "visual matched compositions across old neighborhood, new building, railway crossing, distinguish different time by camera movement and texture, not repetition",
+      "do_not": "pretend same street is literally different decades"
+    },
+    {
+      "phase": "pause",
+      "change": "full stop of feet > waiting at crossing > road-level plant > blossom closeup if separately sourced",
+      "do_not": "repeat walking shots or substitute plant for blooming flower"
+    },
+    {
+      "phase": "future",
+      "change": "new direction and continuously forward perspective; no prior street inserted as filler",
+      "do_not": "repeat introductory shot exactly"
+    }
+  ],
+  "missing_priority": [
+    {
+      "shot": "S03",
+      "need": "identifiable footwear moving out doorway",
+      "status": "missing"
+    },
+    {
+      "shot": "S08",
+      "need": "person actually turns a street corner",
+      "status": "missing"
+    },
+    {
+      "shot": "S14",
+      "need": "paired then-vs-now traversal without fake identity",
+      "status": "missing"
+    },
+    {
+      "shot": "S16",
+      "need": "feet come to complete stop on pavement",
+      "status": "missing"
+    },
+    {
+      "shot": "S20",
+      "need": "small flower actually in bloom near road",
+      "status": "missing"
+    },
+    {
+      "shot": "S21",
+      "need": "camera/person looks down and sees small flower",
+      "status": "missing"
+    },
+    {
+      "shot": "S24",
+      "need": "unmistakably forward-moving road viewpoint",
+      "status": "conditional_candidate"
+    }
+  ],
+  "timing": "all lyric timing unknown; no fake timestamps assigned",
+  "style": "V30 palette: quiet faded blues/creams, no typography, no karaoke overlays"
+}
