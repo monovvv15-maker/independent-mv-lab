@@ -1,4 +1,5 @@
 name: V35 director continuity and reuse QA - no MV generation
+# Rerun after verifying false-quiet footage does not mean feet stop.
 on:
   push:
     paths:
