@@ -1,0 +1,18 @@
+name: V31 graded renderer command QA no media
+on:
+  push:
+    paths:
+      - .github/workflows/v31-grade-adapter-qa.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest -v test_v31_renderer_adapter.py test_v31.py
+      - run: python v31_renderer_adapter.py
