@@ -1,7 +1,5 @@
 name: Independent MV - free footage discovery
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
