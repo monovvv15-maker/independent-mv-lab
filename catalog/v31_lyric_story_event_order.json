@@ -1,0 +1,105 @@
+{
+  "version": "V31",
+  "source": "User-supplied audio transcript in current conversation; event order only, timestamps NOT derived from recording",
+  "track_seconds": 199.872,
+  "verification": "pending private-audio listening review",
+  "do_not_use_as_fixed_timestamps": true,
+  "events": [
+    {
+      "order": 1,
+      "text": "いつもの朝に 靴を履く",
+      "motif": "present morning and shoes",
+      "chapter": 1
+    },
+    {
+      "order": 2,
+      "text": "昨日の雨が まだ残る",
+      "motif": "rain on pavement",
+      "chapter": 2
+    },
+    {
+      "order": 3,
+      "text": "向かいの家の窓が開き おはようの声が 風に乗る",
+      "motif": "window and neighbor voice",
+      "chapter": 2
+    },
+    {
+      "order": 4,
+      "text": "笑顔を返して 歩き出す",
+      "motif": "reply and first steps",
+      "chapter": 3
+    },
+    {
+      "order": 5,
+      "text": "胸の奥には昨日の雨",
+      "motif": "past felt in present",
+      "chapter": 3
+    },
+    {
+      "order": 6,
+      "text": "曲がり角には日が差して 濡れた靴先 光を映す",
+      "motif": "rain light and turning corner",
+      "chapter": 3
+    },
+    {
+      "order": 7,
+      "text": "風の吹くまま 歩いてゆこう 明日の景色は時まかせ",
+      "motif": "let it be / future",
+      "chapter": 4
+    },
+    {
+      "order": 8,
+      "text": "晴れた日には空を仰ぎ 雨の日には雨を聞く",
+      "motif": "acceptance of weather",
+      "chapter": 4
+    },
+    {
+      "order": 9,
+      "text": "靴音ひとつ響かせながら 今日も誰かとすれ違う",
+      "motif": "other everyday lives",
+      "chapter": 4
+    },
+    {
+      "order": 10,
+      "text": "久しぶりに通った道に 知らない家が建っていた",
+      "motif": "past and current self mirrored",
+      "chapter": 4
+    },
+    {
+      "order": 11,
+      "text": "遠くで聞こえる踏切の音 あの頃と同じ鐘が鳴る",
+      "motif": "rail crossing and memory",
+      "chapter": 4
+    },
+    {
+      "order": 12,
+      "text": "あの日の僕がそこにいて 今の僕とすれ違う",
+      "motif": "literal old/new self correspondence",
+      "chapter": 4
+    },
+    {
+      "order": 13,
+      "text": "踏切の向こうに風が吹く いつもの歩幅で歩き出す",
+      "motif": "future still continues",
+      "chapter": 5
+    },
+    {
+      "order": 14,
+      "text": "立ち止まること 忘れないで 風に吹かれる日があっていい",
+      "motif": "core: stopping is okay",
+      "chapter": 5
+    },
+    {
+      "order": 15,
+      "text": "いつもは気づかぬ小さな花が 足を止めればそこに咲く",
+      "motif": "flower noticed by pausing",
+      "chapter": 6
+    },
+    {
+      "order": 16,
+      "text": "今日という日が暮れてゆく 明日はどんな風が吹く",
+      "motif": "open ending",
+      "chapter": 7
+    }
+  ]
+}
