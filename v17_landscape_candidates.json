@@ -1,0 +1,52 @@
+{
+  "version": "V17",
+  "scoped_work": "independent MV pilot / Ega-chan",
+  "verification": "Official provider listings; no claim of final visual or motion review",
+  "scenes": [
+    {
+      "id": "pexels-29906907",
+      "name": "Quiet Urban Street in Early Morning Light",
+      "url": "https://www.pexels.com/video/quiet-urban-street-in-early-morning-light-29906907/",
+      "scene": "06_neighborhood",
+      "width": 1920,
+      "height": 1080,
+      "fps": 29.97,
+      "duration_sec": 8,
+      "license_page": "Pexels Free",
+      "semantic_fit": "morning urban street; suitable alternative to suburban environment pending footage check",
+      "visual_status": "not_reviewed"
+    },
+    {
+      "id": "pexels-34381897",
+      "name": "Quiet Urban Street Scene with Lush Trees",
+      "url": "https://www.pexels.com/video/quiet-urban-street-scene-with-lush-trees-34381897/",
+      "scene": "06_neighborhood",
+      "width": 3840,
+      "height": 2160,
+      "fps": 30,
+      "duration_sec": 9,
+      "license_page": "Pexels Free",
+      "semantic_fit": "trees and parked cars; daytime but actual morning light not proven",
+      "visual_status": "not_reviewed"
+    },
+    {
+      "id": "pexels-40456181",
+      "name": "Quiet Suburban Neighborhood in Spring",
+      "url": "https://www.pexels.com/video/quiet-suburban-neighborhood-in-spring-40456181/",
+      "scene": "06_neighborhood",
+      "width": 3840,
+      "height": 2160,
+      "fps": 60,
+      "duration_sec": 21,
+      "license_page": "Pexels Free",
+      "semantic_fit": "calm suburban street; seasonal consistency pending footage check",
+      "visual_status": "not_reviewed"
+    }
+  ],
+  "outstanding": [
+    "media bytes absent from rendering environment",
+    "scene continuity not checked from full-motion video",
+    "first sung syllable not timed by listening"
+  ],
+  "original_audio_policy": "Never upload original private audio to public GitHub."
+}
