@@ -1,0 +1,36 @@
+name: V28 verify last untested source
+on:
+  push:
+    paths:
+      - .github/workflows/v28-last-source.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python v28_last_source.py
+      - name: Check the download and extracted frames
+        run: |
+          python - <<'PY'
+          import json
+          report=json.load(open('v18_review/v18_report.json'))
+          if not report or report[0]['status']!='frames_extracted':
+              raise SystemExit('Candidate did not pass')
+          print('3998656: verified Pexels footage')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v28-last-source-stills
+          path: |
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 3
