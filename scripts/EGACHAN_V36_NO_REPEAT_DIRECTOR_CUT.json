@@ -1,0 +1,217 @@
+{
+  "version": "V36",
+  "source": "catalog/v35_story_continuity_working_plan.json",
+  "canonical": "scripts/EGACHAN_V29_CANONICAL_STORYBOARD_20261114.md",
+  "status": "pre-render_editorial_script",
+  "video_generated": false,
+  "approval_required_for": "new video generation",
+  "duration_sec": 199.872,
+  "rule": "One unique narrative operation per beat, never substitute an identical shot, source, or transition. No false depiction of action.",
+  "scenes": [
+    {
+      "id": "A",
+      "chapter": 1,
+      "action": "靴を履く一続きの所作",
+      "grammar": "fixed close shot, single continuous action",
+      "source": [
+        "4953053"
+      ],
+      "absorbs": [
+        "S01",
+        "S02"
+      ],
+      "conditional": "実映像内で靴紐の動作を確認。なければS02未解決",
+      "goal": "出発を選ぶ"
+    },
+    {
+      "id": "B",
+      "chapter": 1,
+      "action": "屋内から雨上がりの路面へ場面省略",
+      "grammar": "sound-bridge/straight cut; show no fake actor transition",
+      "source": [
+        "13749224"
+      ],
+      "absorbs": [
+        "S03",
+        "S04"
+      ],
+      "conditional": "屋外と理解できる自然な接続か映像で確認。玄関を出る動作を捏造しない",
+      "goal": "今日の外の空気"
+    },
+    {
+      "id": "C",
+      "chapter": 2,
+      "action": "雨滴と道の奥にある家並み",
+      "grammar": "reflections-to-street spatial cut; not a fabricated mirror",
+      "source": [
+        "27865901",
+        "40456181"
+      ],
+      "absorbs": [
+        "S05",
+        "S06"
+      ],
+      "conditional": "屋根の反射自体は未確認。『反射』の語を視覚検証なしで断定しない",
+      "goal": "昨日の雨と今"
+    },
+    {
+      "id": "D",
+      "chapter": 3,
+      "action": "足元から街の広がりへ",
+      "grammar": "moving low camera, then wide shot",
+      "source": [
+        "4464905",
+        "34892787"
+      ],
+      "absorbs": [
+        "S07",
+        "S09"
+      ],
+      "conditional": "足と街を同一人物として見せない。異なる人物は群像の場面転換で示す",
+      "goal": "今を歩く"
+    },
+    {
+      "id": "E",
+      "chapter": 3,
+      "action": "曲がり角の手前から新しい街へ",
+      "grammar": "geographic ellipsis; shot/reverse shot not reused",
+      "source": [
+        "8729574"
+      ],
+      "absorbs": [
+        "S08"
+      ],
+      "conditional": "実際に曲がったという虚偽表現を避ける。別の道へ場面転換として扱う",
+      "goal": "知らない道が開く"
+    },
+    {
+      "id": "F",
+      "chapter": 4,
+      "action": "昔の道と新しい建物の対比",
+      "grammar": "old-style static photograph-like hold -> new-city traveling shot",
+      "source": [
+        "7312217",
+        "40409379"
+      ],
+      "absorbs": [
+        "S11",
+        "S12"
+      ],
+      "conditional": "同一地点のビフォーアフターと断定しない",
+      "goal": "昔の自分と今の自分"
+    },
+    {
+      "id": "G",
+      "chapter": 4,
+      "action": "踏切の向こうを時間が通る",
+      "grammar": "rail line as temporal division, single transition",
+      "source": [
+        "37108132",
+        "3723683"
+      ],
+      "absorbs": [
+        "S13",
+        "S14",
+        "S15"
+      ],
+      "conditional": "過去と今の『自分』を同一人物に見せるには別素材が必要。映像上は比喩",
+      "goal": "記憶と現在が交差"
+    },
+    {
+      "id": "H",
+      "chapter": 5,
+      "action": "歩行から待つ時間へ",
+      "grammar": "moving viewpoint -> sustained waiting-frame; no fake foot stop",
+      "source": [
+        "12769743"
+      ],
+      "absorbs": [
+        "S16",
+        "S17",
+        "S19"
+      ],
+      "conditional": "実際に歩行中の足が止まる動作は未撮影。『停止』そのものの描写は未解決",
+      "goal": "止まることを肯定"
+    },
+    {
+      "id": "I",
+      "chapter": 5,
+      "action": "舗装の隙間の命に気づく",
+      "grammar": "low-angle detail -> long quiet hold",
+      "source": [
+        "4376498"
+      ],
+      "absorbs": [
+        "S18"
+      ],
+      "conditional": "花ではなく植物の伏線。花の映像と混同しない",
+      "goal": "注意が外から内へ"
+    },
+    {
+      "id": "J",
+      "chapter": 6,
+      "action": "小さな花が現れる",
+      "grammar": "eye-level -> low close-up reveal, no actor eyeline fabricated",
+      "source": [
+        "27571663"
+      ],
+      "absorbs": [
+        "S20",
+        "S21"
+      ],
+      "conditional": "視線主体が映らないので『見つめる人』を描いたと断定しない",
+      "goal": "小さな幸せを見つける"
+    },
+    {
+      "id": "K",
+      "chapter": 6,
+      "action": "風に揺れる草と光",
+      "grammar": "still long shot, natural motion only",
+      "source": [
+        "10695941"
+      ],
+      "absorbs": [
+        "S22"
+      ],
+      "conditional": "場面Jと同じ花見せの繰り返しにしない",
+      "goal": "受け入れる静けさ"
+    },
+    {
+      "id": "L",
+      "chapter": 7,
+      "action": "道の先へ前進する",
+      "grammar": "forward-moving viewpoint, new source and new horizon",
+      "source": [
+        "3998656"
+      ],
+      "absorbs": [
+        "S23"
+      ],
+      "conditional": "物理的な前進と靴の接続を最終フレームで確認",
+      "goal": "また歩く"
+    },
+    {
+      "id": "M",
+      "chapter": 7,
+      "action": "決めつけない空へ開く",
+      "grammar": "expanding street vanishing point -> sky",
+      "source": [
+        "31432212"
+      ],
+      "absorbs": [
+        "S24",
+        "S25"
+      ],
+      "conditional": "空を無意味な時間稼ぎにせず歌の余韻に合わせる",
+      "goal": "人生は続く"
+    }
+  ],
+  "unresolved_actions": [
+    "actual actor foot stops moving on screen",
+    "sustained eye-line discovers flower",
+    "exact word-level music timing",
+    "all selected footage full-motion artistic check"
+  ],
+  "assets_status": "editorial mappings are conditional, not verified final cut",
+  "no_new_mp4": true
+}
