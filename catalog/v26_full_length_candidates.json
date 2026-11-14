@@ -28,7 +28,9 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "exceeds_100MiB_source_limit",
+      "retrieval_note": "V28 real download trial 2026-11-14, exclude until smaller download resolution sourced"
     },
     {
       "id": 3723683,
@@ -54,7 +56,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 4435691,
@@ -80,7 +83,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 3968496,
@@ -154,7 +158,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 36038846,
@@ -178,7 +183,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 3998656,
@@ -228,7 +234,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 40409379,
@@ -252,7 +259,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 40818349,
@@ -303,7 +311,9 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "exceeds_100MiB_source_limit",
+      "retrieval_note": "V28 real download trial 2026-11-14, exclude until smaller download resolution sourced"
     },
     {
       "id": 10695941,
@@ -327,7 +337,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 34506423,
@@ -353,7 +364,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 34892787,
@@ -379,7 +391,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 37601314,
@@ -404,7 +417,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 37541865,
@@ -428,7 +442,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 37216164,
@@ -452,7 +467,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 31432212,
@@ -476,7 +492,8 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "preview_frame_extracted"
     },
     {
       "id": 12769743,
@@ -525,7 +542,9 @@
       "visual_review": "pending",
       "motion_review": "pending",
       "selection": "candidate",
-      "source_page_verified": "search listing only"
+      "source_page_verified": "search listing only",
+      "retrieval_status": "exceeds_100MiB_source_limit",
+      "retrieval_note": "V28 real download trial 2026-11-14, exclude until smaller download resolution sourced"
     }
   ]
 }
