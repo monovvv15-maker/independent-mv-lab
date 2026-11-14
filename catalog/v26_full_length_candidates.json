@@ -1,0 +1,510 @@
+{
+  "version": "V26",
+  "review": "Public provider metadata only. No raw media or AI recognition, no inferred geography except where title explicitly says.",
+  "license": "Pexels Free on listing; verify each file before publishing",
+  "items": [
+    {
+      "id": 35608286,
+      "slug": "morning_crossing",
+      "title": "Morning Walk Through Bustling City Streets",
+      "url": "https://www.pexels.com/video/morning-walk-through-bustling-city-streets-35608286/",
+      "download_url": "https://www.pexels.com/download/video/35608286/",
+      "duration": 20,
+      "width": 3840,
+      "height": 2160,
+      "fps": 30,
+      "tags": [
+        "morning",
+        "city",
+        "people",
+        "walking"
+      ],
+      "chapters": [
+        1,
+        3,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 3723683,
+      "slug": "city_day",
+      "title": "People Walking on the Street",
+      "url": "https://www.pexels.com/video/people-walking-on-the-street-3723683/",
+      "download_url": "https://www.pexels.com/download/video/3723683/",
+      "duration": 21,
+      "width": 4096,
+      "height": 2160,
+      "fps": 24,
+      "tags": [
+        "city",
+        "people",
+        "street"
+      ],
+      "chapters": [
+        3,
+        4,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 4435691,
+      "slug": "spring_wind",
+      "title": "Windy Day in Spring",
+      "url": "https://www.pexels.com/video/windy-day-in-spring-4435691/",
+      "download_url": "https://www.pexels.com/download/video/4435691/",
+      "duration": 9,
+      "width": 1920,
+      "height": 1080,
+      "fps": 29.97,
+      "tags": [
+        "flower",
+        "wind",
+        "spring",
+        "stillness"
+      ],
+      "chapters": [
+        2,
+        5
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 3968496,
+      "slug": "rain_village",
+      "title": "Rain Falling in a Village",
+      "url": "https://www.pexels.com/video/rain-falling-in-a-village-3968496/",
+      "download_url": "https://www.pexels.com/download/video/3968496/",
+      "duration": null,
+      "width": null,
+      "height": null,
+      "fps": null,
+      "tags": [
+        "rain",
+        "street",
+        "residential"
+      ],
+      "chapters": [
+        2,
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 3968502,
+      "slug": "rain_road",
+      "title": "Rain Falling on the Road",
+      "url": "https://www.pexels.com/video/rain-falling-on-the-road-3968502/",
+      "download_url": "https://www.pexels.com/download/video/3968502/",
+      "duration": null,
+      "width": null,
+      "height": null,
+      "fps": null,
+      "tags": [
+        "rain",
+        "puddle",
+        "street"
+      ],
+      "chapters": [
+        2
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 37108132,
+      "slug": "urban_train",
+      "title": "Urban Street Scene with Passing Train",
+      "url": "https://www.pexels.com/video/urban-street-scene-with-passing-train-37108132/",
+      "download_url": "https://www.pexels.com/download/video/37108132/",
+      "duration": 8,
+      "width": 3840,
+      "height": 2160,
+      "fps": 30,
+      "tags": [
+        "train",
+        "street",
+        "passing",
+        "memory"
+      ],
+      "chapters": [
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 36038846,
+      "slug": "rail_crossing",
+      "title": "Light Rail Train Crossing Urban Intersection",
+      "url": "https://www.pexels.com/video/light-rail-train-crossing-urban-intersection-36038846/",
+      "download_url": "https://www.pexels.com/download/video/36038846/",
+      "duration": 12,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "tags": [
+        "train",
+        "crossing",
+        "street"
+      ],
+      "chapters": [
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 3998656,
+      "slug": "steps",
+      "title": "Close-up Shot of A Man Walking",
+      "url": "https://www.pexels.com/video/close-up-shot-of-a-man-walking-3998656/",
+      "download_url": "https://www.pexels.com/download/video/3998656/",
+      "duration": 18,
+      "width": 1920,
+      "height": 1080,
+      "fps": 24,
+      "tags": [
+        "shoes",
+        "walking",
+        "path"
+      ],
+      "chapters": [
+        3,
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 7312217,
+      "slug": "old_warsaw",
+      "title": "Old Buildings In The Street Of Warsaw Poland",
+      "url": "https://www.pexels.com/video/old-buildings-in-the-street-of-warsaw-poland-7312217/",
+      "download_url": "https://www.pexels.com/download/video/7312217/",
+      "duration": 8,
+      "width": 3840,
+      "height": 2160,
+      "fps": 25,
+      "tags": [
+        "old_town",
+        "memory",
+        "street",
+        "dusk"
+      ],
+      "chapters": [
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 40409379,
+      "slug": "old_street",
+      "title": "Charming Old City Street with Historic Architecture",
+      "url": "https://www.pexels.com/video/charming-old-city-street-with-historic-architecture-40409379/",
+      "download_url": "https://www.pexels.com/download/video/40409379/",
+      "duration": 19,
+      "width": 3840,
+      "height": 2160,
+      "fps": 25,
+      "tags": [
+        "old_town",
+        "street",
+        "memory"
+      ],
+      "chapters": [
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 40818349,
+      "slug": "autumn_street",
+      "title": "Quiet Suburban Street in Late Autumn",
+      "url": "https://www.pexels.com/video/quiet-suburban-street-in-late-autumn-40818349/",
+      "download_url": "https://www.pexels.com/download/video/40818349/",
+      "duration": 9,
+      "width": 3840,
+      "height": 2160,
+      "fps": 60,
+      "tags": [
+        "autumn",
+        "street",
+        "residential",
+        "stillness"
+      ],
+      "chapters": [
+        4,
+        5
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 29052852,
+      "slug": "aerial_neighborhood",
+      "title": "Aerial View Over Quiet Suburban Neighborhood Street",
+      "url": "https://www.pexels.com/video/aerial-view-over-quiet-suburban-neighborhood-street-29052852/",
+      "download_url": "https://www.pexels.com/download/video/29052852/",
+      "duration": 18,
+      "width": 3840,
+      "height": 2160,
+      "fps": 23.98,
+      "tags": [
+        "neighborhood",
+        "aerial",
+        "street"
+      ],
+      "chapters": [
+        1,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 10695941,
+      "slug": "flowers_wind",
+      "title": "Flowers and Grasses Waving on Wind",
+      "url": "https://www.pexels.com/video/flowers-and-grasses-waving-on-wind-10695941/",
+      "download_url": "https://www.pexels.com/download/video/10695941/",
+      "duration": 25,
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "tags": [
+        "flower",
+        "wind",
+        "stillness"
+      ],
+      "chapters": [
+        5
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 34506423,
+      "slug": "morning_window",
+      "title": "Woman Enjoying Fresh Morning Air by Window",
+      "url": "https://www.pexels.com/video/woman-enjoying-fresh-morning-air-by-window-34506423/",
+      "download_url": "https://www.pexels.com/download/video/34506423/",
+      "duration": 11,
+      "width": 3840,
+      "height": 2160,
+      "fps": 30,
+      "tags": [
+        "morning",
+        "window",
+        "person",
+        "wind"
+      ],
+      "chapters": [
+        1,
+        5
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 34892787,
+      "slug": "pedestrian_crossing",
+      "title": "Busy Pedestrian Crossing in Urban City Scene",
+      "url": "https://www.pexels.com/video/busy-pedestrian-crossing-in-urban-city-scene-34892787/",
+      "download_url": "https://www.pexels.com/download/video/34892787/",
+      "duration": 20,
+      "width": 3840,
+      "height": 2160,
+      "fps": 60,
+      "tags": [
+        "city",
+        "people",
+        "crossing",
+        "daily"
+      ],
+      "chapters": [
+        3,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 37601314,
+      "slug": "pedestrians",
+      "title": "Casual Pedestrian Foot Traffic in Urban Setting",
+      "url": "https://www.pexels.com/video/casual-pedestrian-foot-traffic-in-urban-setting-37601314/",
+      "download_url": "https://www.pexels.com/download/video/37601314/",
+      "duration": 19,
+      "width": 3840,
+      "height": 2160,
+      "fps": 25,
+      "tags": [
+        "people",
+        "walking",
+        "daily"
+      ],
+      "chapters": [
+        3,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 37541865,
+      "slug": "city_sunset",
+      "title": "Scenic Sunset Over City Skyline",
+      "url": "https://www.pexels.com/video/scenic-sunset-over-city-skyline-37541865/",
+      "download_url": "https://www.pexels.com/download/video/37541865/",
+      "duration": 22,
+      "width": 1920,
+      "height": 1080,
+      "fps": 30,
+      "tags": [
+        "sunset",
+        "city",
+        "ending"
+      ],
+      "chapters": [
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 37216164,
+      "slug": "quiet_sunset",
+      "title": "Peaceful Sunset Over Urban Street Scene",
+      "url": "https://www.pexels.com/video/peaceful-sunset-over-urban-street-scene-37216164/",
+      "download_url": "https://www.pexels.com/download/video/37216164/",
+      "duration": 9,
+      "width": 3840,
+      "height": 2160,
+      "fps": 29.97,
+      "tags": [
+        "sunset",
+        "street",
+        "ending"
+      ],
+      "chapters": [
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 31432212,
+      "slug": "vintage_suburb",
+      "title": "Vintage Suburban Street with Classic Vibes",
+      "url": "https://www.pexels.com/video/vintage-suburban-street-with-classic-vibes-31432212/",
+      "download_url": "https://www.pexels.com/download/video/31432212/",
+      "duration": 9,
+      "width": 1920,
+      "height": 1080,
+      "fps": 24,
+      "tags": [
+        "memory",
+        "neighborhood",
+        "street"
+      ],
+      "chapters": [
+        4
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 12769743,
+      "slug": "wait_crossing",
+      "title": "Pedestrians Waiting to Cross a Busy City Street",
+      "url": "https://www.pexels.com/video/pedestrians-waiting-to-cross-a-busy-city-street-12769743/",
+      "download_url": "https://www.pexels.com/download/video/12769743/",
+      "duration": 13,
+      "width": 3840,
+      "height": 2160,
+      "fps": 25,
+      "tags": [
+        "people",
+        "crossing",
+        "stillness"
+      ],
+      "chapters": [
+        5
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    },
+    {
+      "id": 40759791,
+      "slug": "urban_crowds",
+      "title": "Busy Urban Street with Pedestrians and Traffic",
+      "url": "https://www.pexels.com/video/busy-urban-street-with-pedestrians-and-traffic-40759791/",
+      "download_url": "https://www.pexels.com/download/video/40759791/",
+      "duration": 50,
+      "width": 3840,
+      "height": 2160,
+      "fps": 29.97,
+      "tags": [
+        "people",
+        "city",
+        "walking"
+      ],
+      "chapters": [
+        3,
+        6
+      ],
+      "license_page": "Free",
+      "visual_review": "pending",
+      "motion_review": "pending",
+      "selection": "candidate"
+    }
+  ]
+}
