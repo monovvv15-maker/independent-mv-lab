@@ -1,0 +1,43 @@
+name: V21 six scene real footage review
+on:
+  push:
+    paths:
+      - v21_six_scene_review.py
+      - .github/workflows/v21-six-scene-review.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install free existing FFmpeg helper
+        run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - name: Fetch 6 temporary official free-stock clips and extract stills
+        run: python v21_six_scene_review.py
+      - name: Report missing media for human review
+        run: |
+          python - <<'PY'
+          import json
+          rows=json.load(open('v18_review/v18_report.json'))
+          ok=[x['id'] for x in rows if x['status']=='frames_extracted']
+          bad=[x['id'] for x in rows if x['status']!='frames_extracted']
+          print({'frames_obtained_for':ok,'missing':bad})
+          if len(ok)<4:
+              raise SystemExit('FAIL: fewer than four usable six-scene candidates')
+          PY
+      - name: Archive small review frames only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v21-six-scene-review
+          path: |
+            v18_review/index.html
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 3
