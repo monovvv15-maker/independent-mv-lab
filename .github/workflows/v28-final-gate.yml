@@ -1,5 +1,5 @@
 name: V28 full-length pre-render verification (no media generated)
-# Recheck renderer source offsets with corrected boundary unit test.
+# Final proof: all V28-selected sources passed real download/preview QA.
 on:
   push:
     paths:
