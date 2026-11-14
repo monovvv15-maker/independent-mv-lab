@@ -27,7 +27,7 @@ def pull(url,destination,max_bytes=MAX_BYTES):
             out.write(chunk)
     return count
 def extract(path,output):
-    subprocess.run(["ffmpeg","-nostdin","-v","error","-y","-ss","1","-i",str(path),"-frames:v","1","-vf","scale=640:-2",str(output)],check=True,timeout=30)
+    subprocess.run([__import__("imageio_ffmpeg").get_ffmpeg_exe(),"-nostdin","-v","error","-y","-ss","1","-i",str(path),"-frames:v","1","-vf","scale=640:-2",str(output)],check=True,timeout=30)
     if not output.exists():raise RuntimeError("missing extracted frame")
 
 def main():
@@ -54,6 +54,19 @@ def main():
                 row.update(status="extracted",bytes=size,frame=str(img.relative_to(out)))
             except Exception as exc:
                 row.update(status="skipped",error=type(exc).__name__+": "+str(exc)[:170])
+                # Wikimedia's own video-derived preview. Not an extracted movie frame.
+                preview=item.get("preview_url","")
+                if preview.startswith("https://thumb.wikimedia.org/"):
+                    thumb=frames/(item["id"]+"_preview.jpg")
+                    try:
+                        req=urllib.request.Request(preview,headers={"User-Agent":"IndependentMVLab/0.7"})
+                        with urllib.request.urlopen(req,timeout=20) as response:
+                            picture=response.read(2*1024*1024+1)
+                        if len(picture)>2*1024*1024:raise ValueError("preview exceeds 2MB")
+                        thumb.write_bytes(picture)
+                        row.update(status="commons_preview_only",frame=str(thumb.relative_to(out)))
+                    except Exception as secondary:
+                        row["preview_error"]=type(secondary).__name__+": "+str(secondary)[:120]
             finally:
                 temp.unlink(missing_ok=True)
             report.append(row)
@@ -66,6 +79,6 @@ def main():
         cards.append('<article>'+img+'<p>'+escape(r["scene"]+" | "+r["status"]+" | "+r["title"])+'</p><a href="'+escape(r["source"],quote=True)+'">Source and license</a></article>')
     html='<!DOCTYPE html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#111;color:white;font:15px system-ui}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}article{background:#222;padding:10px}img{width:100%}a{color:#aef}</style><h1>V07 real-video frame inspection</h1><p>Manual visual review required before reuse. Metadata license is not a final rights clearance.</p><main>'+''.join(cards)+'</main></html>'
     (out/"v07_review.html").write_text(html,encoding="utf-8")
-    print(json.dumps({"attempted":len(report),"extracted":sum(x["status"]=="extracted" for x in report),"skipped":sum(x["status"]!="extracted" for x in report)},ensure_ascii=False))
+    print(json.dumps({"attempted":len(report),"extracted":sum(x["status"]=="extracted" for x in report),"commons_preview_only":sum(x["status"]=="commons_preview_only" for x in report),"skipped":sum(x["status"]=="skipped" for x in report)},ensure_ascii=False))
     # The workflow intentionally succeeds even if all large videos were skipped.
 if __name__=="__main__":main()
