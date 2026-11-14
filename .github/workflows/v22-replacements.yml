@@ -1,0 +1,29 @@
+name: V22 two-shot replacement visual QA
+on:
+  push:
+    paths:
+      - v22_replacements.py
+      - .github/workflows/v22-replacements.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --disable-pip-version-check imageio-ffmpeg==0.6.0
+      - run: python v22_replacements.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v22-replacement-frames
+          path: |
+            v18_review/index.html
+            v18_review/v18_report.json
+            v18_review/stills/
+          retention-days: 3
