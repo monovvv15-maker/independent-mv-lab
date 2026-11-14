@@ -13,7 +13,7 @@ def classify(text):
     normalized = re.sub(r"\s+", " ", normalized).lower()
     if any(s.lower() in normalized for s in RESTRICTED_TEXT):
         return "restricted"
-    if FREE_TEXT.lower() in normalized and "for commercial or personal use" in normalized:
+    if "mixkit stock video free license" in normalized and "commercial or personal use" in normalized:
         return "verified_free"
     return "unverified"
 
