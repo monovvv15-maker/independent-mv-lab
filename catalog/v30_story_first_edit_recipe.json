@@ -1,0 +1,107 @@
+{
+  "version": "V30",
+  "canonical": "scripts/EGACHAN_V29_CANONICAL_STORYBOARD_20261114.md",
+  "style": "scripts/EGACHAN_V30_PAST_PRESENT_FUTURE_STYLE_20261114.md",
+  "song_duration_sec": 199.872,
+  "render_authorized": false,
+  "render_start_phrase": "動画作成",
+  "new_mp4_generated": false,
+  "grading": {
+    "target": "faded nostalgic Japanese photo, post-rain blue-grey and cream highlights",
+    "saturation_multiplier": 0.82,
+    "contrast_multiplier": 0.91,
+    "temperature": "neutral/slightly warm highlights",
+    "grain": "fine, restrained; no artificial scratches over faces",
+    "vignette": "subtle, soft cream corners, never block content",
+    "colorimetric_status": "concept only; not matched by image statistics"
+  },
+  "editing": {
+    "method": "story-first 7 chapters, no mechanically repeated shot loops",
+    "past_present": "reflection/matched compositions and changing streets",
+    "pause": "long held beat with wind and flowers",
+    "opening": "barefoot -> shoe being put on; no woman exiting door",
+    "ending": "return to road/footwear motif with open future",
+    "lyric_sync": "unverified",
+    "chapter_boundaries": "provisional"
+  },
+  "chapter_assets": [
+    {
+      "chapter": 1,
+      "motif": "present",
+      "primary_ids": [
+        4953053
+      ],
+      "negative_ids": [
+        34506423
+      ],
+      "reuse_allowed": false
+    },
+    {
+      "chapter": 2,
+      "motif": "yesterday's rain / memory",
+      "primary_ids": [
+        13749224,
+        40456181
+      ],
+      "reuse_allowed": true
+    },
+    {
+      "chapter": 3,
+      "motif": "walking onward",
+      "primary_ids": [
+        4464905,
+        3998656,
+        34892787
+      ],
+      "reuse_allowed": false
+    },
+    {
+      "chapter": 4,
+      "motif": "past and current world",
+      "primary_ids": [
+        40409379,
+        3723683,
+        37601314
+      ],
+      "reuse_allowed": false
+    },
+    {
+      "chapter": 5,
+      "motif": "pause and accept",
+      "primary_ids": [
+        12769743,
+        10695941,
+        4435691
+      ],
+      "reuse_allowed": false
+    },
+    {
+      "chapter": 6,
+      "motif": "noticing small happiness",
+      "primary_ids": [
+        10695941,
+        40456181
+      ],
+      "reuse_allowed": true
+    },
+    {
+      "chapter": 7,
+      "motif": "future / open road",
+      "primary_ids": [
+        34381897,
+        40456181
+      ],
+      "reuse_allowed": true
+    }
+  ],
+  "reused_clip_policy": "Only reuse if narratively intentional and different time window/visual interpretation; do not mechanically repeat V28 fragments.",
+  "missing": {
+    "photos": "Original photo inventory not yet confirmed",
+    "footage": [
+      "barefoot shoe opening from same person",
+      "foot stops walking",
+      "flower noticed in passing"
+    ],
+    "lyric_timing": "Not verified to word-level"
+  }
+}
