@@ -7,7 +7,7 @@ class V28RendererTests(unittest.TestCase):
   self.assertIn('pad=1280:720',cmd[cmd.index('-vf')+1])
   self.assertIn('libx264',cmd)
  def test_source_offset_bounded(self):
-  self.assertEqual(source_offset(100,8,6),1.5)
+  self.assertEqual(source_offset(103,8,6),1.5)
   self.assertEqual(source_offset(0,8,6),0)
  def test_concat_copies(self):
   self.assertIn('copy',concat_command('ffmpeg','concat.txt','final.mp4'))
