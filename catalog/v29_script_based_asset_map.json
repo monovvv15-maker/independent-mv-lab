@@ -1,0 +1,218 @@
+{
+  "version": "V29",
+  "canonical_script": "scripts/EGACHAN_V29_CANONICAL_STORYBOARD_20261114.md",
+  "duration_seconds": 199.872,
+  "mode": "story_first_selective_reuse",
+  "render_authorized": false,
+  "lyric_timestamps_verified": false,
+  "policy": {
+    "reuse_existing_photos": true,
+    "reuse_existing_videos": true,
+    "use_all": false,
+    "unknown_photo_inventory": "not yet enumerated",
+    "no_fake_footage_approval": true,
+    "do_not_modify_originals": true
+  },
+  "chapters": [
+    {
+      "chapter": 1,
+      "title": "朝の始まり",
+      "provisional_start": 0,
+      "provisional_end": 25,
+      "emotion": "今日が始まる",
+      "required": [
+        "裸足の足元",
+        "靴を履く",
+        "靴紐を結ぶ",
+        "玄関の空気"
+      ],
+      "priority_existing_video_ids": [
+        4953053
+      ],
+      "secondary_ids": [],
+      "reject": [
+        "扉から女性が主役として出る映像"
+      ],
+      "missing": [
+        "玄関から外へ出る自然な接続映像",
+        "裸足から靴を履く同一動作のカット"
+      ],
+      "use_limit": "no unrelated face at opening"
+    },
+    {
+      "chapter": 2,
+      "title": "昨日の雨、今日の朝",
+      "provisional_start": 25,
+      "provisional_end": 55,
+      "emotion": "昨日の雨を抱えても朝が来る",
+      "required": [
+        "濡れた路面",
+        "水たまり",
+        "雨上がりの朝の光"
+      ],
+      "priority_existing_video_ids": [
+        13749224,
+        40456181
+      ],
+      "secondary_ids": [
+        3968496,
+        3968502
+      ],
+      "reject": [
+        "洪水・災害や夕方のように見える映像"
+      ],
+      "missing": [
+        "濡れた路面が乾き始める朝のつなぎ"
+      ]
+    },
+    {
+      "chapter": 3,
+      "title": "歩き出す",
+      "provisional_start": 55,
+      "provisional_end": 85,
+      "emotion": "生活を始める",
+      "required": [
+        "足元",
+        "曲がり角",
+        "横断歩道",
+        "人が歩く道"
+      ],
+      "priority_existing_video_ids": [
+        4464905,
+        3998656,
+        34892787
+      ],
+      "secondary_ids": [
+        3723683,
+        37601314
+      ],
+      "reject": [
+        "靴の切替を同一人物の連続動作に見せる編集"
+      ],
+      "missing": [
+        "曲がり角を曲がる自然な動き"
+      ]
+    },
+    {
+      "chapter": 4,
+      "title": "世界の朝が重なる",
+      "provisional_start": 85,
+      "provisional_end": 115,
+      "emotion": "世界の誰かと共鳴する",
+      "required": [
+        "異なる街",
+        "別の人の朝",
+        "通勤通学",
+        "窓"
+      ],
+      "priority_existing_video_ids": [
+        34506423,
+        3723683,
+        37601314,
+        40409379
+      ],
+      "secondary_ids": [
+        7312217,
+        34381897
+      ],
+      "reject": [
+        "一人が別の人物にすり替わったように見える切替"
+      ],
+      "missing": [
+        "地域差が自然に伝わる生活の所作"
+      ]
+    },
+    {
+      "chapter": 5,
+      "title": "立ち止まること",
+      "provisional_start": 115,
+      "provisional_end": 150,
+      "emotion": "止まることを肯定する",
+      "required": [
+        "足を止める",
+        "静かな風",
+        "花",
+        "待つ時間"
+      ],
+      "priority_existing_video_ids": [
+        12769743,
+        10695941,
+        4435691,
+        37108132
+      ],
+      "secondary_ids": [
+        36038846
+      ],
+      "reject": [
+        "突然の大げさな感動演出",
+        "歩行だけを連続する"
+      ],
+      "missing": [
+        "実際に歩いていた足が立ち止まる画",
+        "落ち着いた空やベンチ"
+      ]
+    },
+    {
+      "chapter": 6,
+      "title": "小さな幸せ",
+      "provisional_start": 150,
+      "provisional_end": 180,
+      "emotion": "小さな光に気づく",
+      "required": [
+        "木漏れ日",
+        "花",
+        "人とすれ違う",
+        "静かな街"
+      ],
+      "priority_existing_video_ids": [
+        10695941,
+        4435691,
+        40456181
+      ],
+      "secondary_ids": [
+        34381897,
+        37601314
+      ],
+      "reject": [
+        "ドラマを押しつけるカット"
+      ],
+      "missing": [
+        "道端の小さな花に自然に気づく動作"
+      ]
+    },
+    {
+      "chapter": 7,
+      "title": "それぞれの明日へ",
+      "provisional_start": 180,
+      "provisional_end": 199.872,
+      "emotion": "明日へ続く静かな余韻",
+      "required": [
+        "冒頭との視覚的呼応",
+        "道の先",
+        "空",
+        "日常へ戻る"
+      ],
+      "priority_existing_video_ids": [
+        40456181,
+        34381897,
+        37216164
+      ],
+      "secondary_ids": [
+        37541865
+      ],
+      "reject": [
+        "夕暮れで終わった一日だと断定するカット",
+        "一つの素材の執拗な繰り返し"
+      ],
+      "missing": [
+        "ラストで冒頭の靴・足元を新しい角度で呼応させる素材"
+      ]
+    }
+  ],
+  "asset_classification": {
+    "already_verified_for_download": "Some V23/V28 stock clips were downloaded and sampled; this does not certify full-motion suitability",
+    "photos": "The independent repo currently lists Pexels video candidates; no dedicated photo inventory has been verified",
+    "required_review": "Review actual frame content and licensing for each selected reuse"
+  },
+  "next_gate": "Ask author for their preferred video style immediately before locking visual treatments/transition grammar, not at every clip decision."
+}
