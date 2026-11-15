@@ -1,0 +1,31 @@
+name: MV private Dropbox metadata connection check - NO VIDEO
+on:
+  push:
+    paths:
+      - .github/workflows/mv-private-connection-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      MV_JACKET_DROPBOX_PATH: ${{ vars.MV_JACKET_DROPBOX_PATH }}
+      MV_AUDIO_DROPBOX_PATH: ${{ vars.MV_AUDIO_DROPBOX_PATH }}
+      MV_PRIVATE_CACHE_PATH: ${{ vars.MV_PRIVATE_CACHE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run read-only connector safety tests
+        run: python -m unittest -v test_mv_private_connection_check.py
+      - name: Check GitHub settings and Dropbox metadata only
+        run: python mv_private_connection_check.py
+      - name: No media output
+        if: always()
+        run: echo 'No private media read or uploaded. No video generated.'
