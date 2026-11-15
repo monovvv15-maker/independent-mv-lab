@@ -1,4 +1,5 @@
 name: MV private Dropbox metadata connection check - NO VIDEO
+# Diagnose OAuth HTTP status only without exposing private tokens.
 on:
   push:
     paths:
