@@ -6,6 +6,7 @@ Checks environment presence and Dropbox paths using metadata endpoint only.
 import json
 import os
 import urllib.request
+from urllib.error import HTTPError
 from mv_private_dropbox import access_token,safe_dropbox_path
 
 NAMES=("DROPBOX_REFRESH_TOKEN","DROPBOX_APP_KEY","DROPBOX_APP_SECRET",
@@ -31,7 +32,12 @@ def check_sources():
     if not all(flags.values()):
         report["reason"]="required configuration incomplete"
         return report
-    token=access_token()
+    try:
+        token=access_token()
+    except HTTPError as error:
+        report["auth_http_status"]=error.code
+        report["reason"]="Dropbox OAuth refresh failed"
+        return report
     for env,name in [("MV_JACKET_DROPBOX_PATH","private_jacket_verified"),
                      ("MV_AUDIO_DROPBOX_PATH","private_audio_verified")]:
         try:
@@ -56,6 +62,8 @@ if __name__=="__main__":
         result=check_sources()
     except Exception as e:
         result={"ready":False,"no_video_generated":True,
-             "error_type":type(e).__name__,"reason":"Dropbox token or API unavailable"}
+             "error_type":type(e).__name__,
+             "http_status":e.code if isinstance(e,HTTPError) else None,
+             "reason":"Dropbox token or API unavailable"}
     print(json.dumps(result,ensure_ascii=False))
     if not result["ready"]:raise SystemExit(1)
