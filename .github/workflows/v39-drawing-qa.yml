@@ -1,4 +1,5 @@
 name: V39 drawing story and title timing QA (NO MEDIA)
+# Verify corrected 3-channel compositing on all frames.
 on:
   push:
     paths:
