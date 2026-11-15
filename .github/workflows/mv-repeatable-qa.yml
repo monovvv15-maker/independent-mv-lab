@@ -1,0 +1,33 @@
+name: Repeatable MV pipeline unit QA - never render
+on:
+  push:
+    paths:
+      - mv_repeatable_pipeline.py
+      - mv_drawing_render.py
+      - test_mv_repeatable_pipeline.py
+      - catalog/mv_repeatable_recipe_v1.json
+      - .github/workflows/mv-repeatable-qa.yml
+      - v39_progressive_drawing.py
+      - v41_redraw_engine.py
+      - v42_timing_bridge.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU-only frame processing dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 opencv-python-headless==4.11.0.86
+      - name: Run original drawing plus restart integrity tests
+        run: |
+          python -m unittest -v test_v39.py test_v41.py test_v42.py test_mv_repeatable_pipeline.py
+          python mv_repeatable_pipeline.py --dry-run
+      - name: Static output report
+        run: |
+          echo 'Tests only. No image/video created. No private audio/image accessed.'
