@@ -1,0 +1,21 @@
+name: V41 one-time redraw and full pause QA (no media creation)
+on:
+  push:
+    paths:
+      - .github/workflows/v41-redraw-qa.yml
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install --disable-pip-version-check numpy==2.2.6 opencv-python-headless==4.11.0.86
+      - name: In-memory tests only
+        run: |
+          python -m unittest -v test_v39.py test_v41.py
+          python v41_redraw_engine.py
