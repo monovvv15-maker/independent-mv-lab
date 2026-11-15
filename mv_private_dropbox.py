@@ -58,9 +58,16 @@ def download(token,remote,local,optional=False):
                     chunk=resp.read(1024*1024)
                     if not chunk:break
                     fp.write(chunk)
-    except Exception:
+    except Exception as error:
         target.unlink(missing_ok=True)
-        if optional:return False
+        # Only a genuinely missing cache is optional. Network/credential/
+        # permission failures must stop instead of overwriting a valid cache.
+        if optional:
+            from urllib.error import HTTPError
+            if isinstance(error,HTTPError) and error.code==409:
+                detail=error.read(1024).decode("utf-8",errors="replace")
+                if "path/not_found" in detail or "not_found" in detail:
+                    return False
         raise
     return True
 
