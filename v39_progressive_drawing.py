@@ -116,7 +116,7 @@ def frame_at(t,im,clean=None,pencil=None,order=None):
     else:
         p=.89+.11*float(progress(t,139,161))
     revealed=(order<=p).astype(np.float32)[...,None]
-    line_alpha=(pencil.astype(np.float32)/255.*.83*revealed)
+    line_alpha=(pencil.astype(np.float32)[...,None]/255.*.83*revealed)
     frame=(paper.astype(np.float32)*(1-line_alpha)+
            np.array((107,102,103),np.float32)*line_alpha)
     if t>=161:
