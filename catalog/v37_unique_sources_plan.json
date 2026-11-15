@@ -3,7 +3,7 @@
   "parent": "scripts/EGACHAN_V36_NO_REPEAT_DIRECTOR_CUT.json",
   "status": "authorized-for-one-time-rough",
   "duration": 199.872,
-  "notes": "24 unique sources, runtime retiming with actual source duration and no repeated IDs; transitions are sequential narrative grammar not proven literal actor continuity; lyric cue positions are provisional",
+  "notes": "25 unique single-use clips, source-durations dynamically validated; no inferred on-screen physical foot stop and lyric word time remains provisional",
   "shots": [
     {
       "name": "shoe_begin",
@@ -112,6 +112,15 @@
       "meaning": "見知らぬ建物",
       "grammar": "comparison architecture",
       "source_url": "https://www.pexels.com/download/video/40409379/"
+    },
+    {
+      "name": "changed_season",
+      "id": 40818349,
+      "weight": 8,
+      "chapter": "memory",
+      "meaning": "時間の経過を示す違う季節の住宅街",
+      "grammar": "season shift",
+      "source_url": "https://www.pexels.com/download/video/40818349/"
     },
     {
       "name": "old_suburb",
