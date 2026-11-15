@@ -20,7 +20,7 @@ def validate(shots):
     if len(shots)<20:raise ValueError("not enough visual variety")
     if len(set(s["grammar"] for s in shots))!=len(shots):
         raise ValueError("repeated shot grammar")
-    if sum(s["weight"] for s in shots)<DURATION-5:raise ValueError("insufficient source duration weights")
+    if sum(s["weight"] for s in shots)<175:raise ValueError("insufficient source duration weights")
     return True
 
 def assign(shots,real_durations):
