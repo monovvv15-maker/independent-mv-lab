@@ -1,0 +1,78 @@
+name: Repeatable MV private production - explicit author approval only
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_video_generation:
+        description: 'Type YES only after the creator explicitly says 動画生成開始'
+        required: true
+        type: string
+      production_note:
+        description: 'Optional run label; no private content'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repeatable-private-egachan-mv
+  cancel-in-progress: false
+
+jobs:
+  private_render:
+    if: github.event.inputs.confirm_video_generation == 'YES'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      MV_JACKET_DROPBOX_PATH: ${{ vars.MV_JACKET_DROPBOX_PATH }}
+      MV_AUDIO_DROPBOX_PATH: ${{ vars.MV_AUDIO_DROPBOX_PATH }}
+      MV_PRIVATE_CACHE_PATH: ${{ vars.MV_PRIVATE_CACHE_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependency installation (free CPU tools only)
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 opencv-python-headless==4.11.0.86
+      - name: Test safeguards without creating video
+        run: python -m unittest -v test_v39.py test_v41.py test_v42.py test_mv_repeatable_pipeline.py test_mv_private_dropbox.py
+      - name: Check that private material will NEVER be uploaded to public Actions artifacts
+        run: |
+          test -n "$DROPBOX_REFRESH_TOKEN"
+          test -n "$DROPBOX_APP_KEY"
+          test -n "$DROPBOX_APP_SECRET"
+          test -n "$MV_JACKET_DROPBOX_PATH"
+          test -n "$MV_AUDIO_DROPBOX_PATH"
+          test -n "$MV_PRIVATE_CACHE_PATH"
+      - name: Restore previous verified build receipts and outputs from private Dropbox
+        run: python mv_private_dropbox.py restore
+      - name: Fetch original jacket and audio privately
+        run: python mv_private_dropbox.py fetch
+      - name: Render / resume, mux, QA, package and persist private results
+        shell: bash
+        run: |
+          set +e
+          python mv_repeatable_pipeline.py \
+            --recipe catalog/mv_repeatable_recipe_v1.json \
+            --workspace .mv-build \
+            --image .private-assets/jacket.jpg \
+            --audio .private-assets/audio.mp3 \
+            --authorize-render
+          render_rc=$?
+          python mv_private_dropbox.py publish
+          save_rc=$?
+          if [ "$render_rc" -ne 0 ]; then
+            echo "An authorized stage failed. See last_run.json in private cache, not public artifact."
+            exit "$render_rc"
+          fi
+          exit "$save_rc"
+      - name: Clear local private originals from runner
+        if: always()
+        run: rm -rf .private-assets .mv-build
+      - name: Public log contains status only
+        if: always()
+        run: echo 'No private media or private build artifact uploaded to this public repository.'
