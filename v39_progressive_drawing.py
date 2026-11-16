@@ -133,11 +133,15 @@ def frame_at(t,im,clean=None,pencil=None,order=None):
     if t>=194:
         # Preserve the source's original handwritten strokes as final sign-off.
         mask=(title_mask(im).astype(np.float32)/255.)
-        reveal=float(progress(t,194,DURATION))
+        # Complete the handwritten sign-off before the last encoded frame.
+        # Pixel-perfect original restoration must not be a partial masked title.
+        if t>=DURATION-0.08:
+            return im.copy()
+        reveal=float(progress(t,194,DURATION-0.08))
         h,w=mask.shape
         xx=np.arange(w,dtype=np.float32)[None,:]
         x0=TITLE_ROI[0]*w;x1=TITLE_ROI[2]*w
-        sweep=np.clip((reveal-(xx-x0)/(x1-x0))/.12,0,1)
+        sweep=np.clip((reveal*1.12-(xx-x0)/(x1-x0))/.12,0,1)
         opacity=(mask*sweep)[...,None]
         frame=frame*(1-opacity)+im.astype(np.float32)*opacity
     return np.clip(frame,0,255).astype(np.uint8)
