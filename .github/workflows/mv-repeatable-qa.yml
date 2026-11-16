@@ -7,6 +7,8 @@ on:
       - mv_private_dropbox.py
       - test_mv_private_dropbox.py
       - test_mv_resume_simulation.py
+      - v44_no_dropbox_preflight.py
+      - test_v44_no_dropbox_preflight.py
       - mv_local_preflight.py
       - test_mv_local_preflight.py
       - mv_private_connection_check.py
@@ -33,8 +35,9 @@ jobs:
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 opencv-python-headless==4.11.0.86
       - name: Run original drawing plus restart integrity tests
         run: |
-          python -m unittest -v test_v39.py test_v41.py test_v42.py test_mv_repeatable_pipeline.py test_mv_private_dropbox.py test_mv_resume_simulation.py test_mv_private_connection_check.py test_mv_local_preflight.py
+          python -m unittest -v test_v39.py test_v41.py test_v42.py test_mv_repeatable_pipeline.py test_mv_private_dropbox.py test_mv_resume_simulation.py test_mv_private_connection_check.py test_mv_local_preflight.py test_v44_no_dropbox_preflight.py
           python mv_repeatable_pipeline.py --dry-run
+          python v44_no_dropbox_preflight.py
       - name: Static output report
         run: |
           echo 'Tests only. No image/video created. No private audio/image accessed.'
