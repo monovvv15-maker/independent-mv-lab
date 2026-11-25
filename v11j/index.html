@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>V11j 6秒直接取得試験</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V11j｜6秒直接取得試験</h1><p>V11iで成功したGPU直接RGBA取得を6秒・1080p・180Fに拡張。旧6～12秒区間との比較、全180Fの時刻・画素・処理負荷を検査します。無音の診断MP4です。</p><section><p>Safariを前面に保ち、発熱したら停止してください。6秒のみ。Safariを前面に保ち、発熱時は停止。旧保存区間は読み取り専用、再試行なし。</p><button id="go">動画生成開始（6秒のみ）</button><button id="stop" class="secondary" disabled>停止</button><div id="stage"></div><progress id="progress" max="180" value="0"></progress><p id="status" role="status">未実行</p><video id="preview" controls playsinline preload="metadata" hidden></video><a id="save" class="save" download="suilemo_v11j_segment02_DIAGNOSTIC.mp4" hidden>診断MP4を保存</a><button id="share" class="secondary" hidden>診断MP4を共有</button></section><section><button id="copy" class="secondary">結果をコピー</button><textarea id="report" readonly aria-label="検査結果"></textarea></section></main><script>
+"use strict";
+const W=1920,H=1080,FPS=30,N=900,THUMB_W=128,THUMB_H=72,FRAME_BYTES=W*H*4,SEG=180,SEGSEC=6,MAX_PART=12*1024*1024,DBNAME="suilemo-v11a-rotunda-30s-v1",RECIPE="v10-19f559cc-orbit30-boundary-v2",ID=1,EXPECTED="a9af7ef08e040662f4fb1ed2d6a77f1b9f57b17901b5822dfc92aa62de5b3a9e";
+const $=id=>document.getElementById(id);
+let active=false,aborted=false,blob=null,url=null;
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{let timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function show(d){$("report").value=JSON.stringify(d,null,2);}
+const hashBytes=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),n=>n.toString(16).padStart(2,"0")).join("");
+function reduceRGBA(p){
+ check(p.length===FRAME_BYTES,"wrong RGBA size");
+ const a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  let sum=0;for(let dy=0;dy<15;dy++)for(let dx=0;dx<15;dx++){
+   const i=((y*15+dy)*W+x*15+dx)*4;
+   sum+=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+  }a[y*THUMB_W+x]=Math.round(sum/225);
+ }return a;
+}
+function jumpGate(d,neighbors){return d<=Math.max(8,2.5*Math.max(...neighbors));}
+const sha256=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+function frameIndex(t,start){const x=(t-start)*FPS,n=Math.round(x);check(Math.abs(x-n)<0.015&&n>=0&&n<SEG,"off-grid segment timestamp: "+t);return n;}
+function validRecord(r,id){return r?.id===id&&r.recipe===RECIPE&&r.start===id*SEG&&r.count===SEG&&r.blob instanceof Blob&&r.blob.size===r.bytes&&r.bytes>1024&&r.bytes<=MAX_PART&&/^[0-9a-f]{64}$/.test(r.sha256);}
+async function configSignature(c){
+ check(c&&c.description&&c.codec&&c.codedWidth===W&&c.codedHeight===H,"missing AVC decoder config");
+ const desc=c.description instanceof ArrayBuffer?new Uint8Array(c.description):new Uint8Array(c.description.buffer,c.description.byteOffset,c.description.byteLength);
+ return JSON.stringify([c.codec,c.codedWidth,c.codedHeight,c.displayAspectWidth??null,c.displayAspectHeight??null,c.colorSpace?.primaries??null,c.colorSpace?.transfer??null,c.colorSpace?.matrix??null,c.colorSpace?.fullRange??null,await sha256(new Blob([desc]))]);
+}
+function openReadOnly(){return deadline(new Promise((resolve,reject)=>{
+ const r=indexedDB.open(DBNAME);
+ r.onupgradeneeded=()=>{r.transaction.abort();reject(Error("V11a保存領域なし。新規作成しません。"));};
+ r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error("checkpoint blocked"));
+}),15000,"read-only checkpoint open");}
+async function readOnly(fn){const db=await openReadOnly();try{return await deadline(new Promise((resolve,reject)=>{
+ const tx=db.transaction("segments","readonly"),r=fn(tx.objectStore("segments"));
+ tx.oncomplete=()=>resolve(r.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
+}),20000,"checkpoint read");}finally{db.close();}}
+const getPart=id=>readOnly(o=>o.get(id));
+function summary(a){if(!a?.length)return null;const b=[...a].sort((x,y)=>x-y);return {mean_ms:Number((a.reduce((s,x)=>s+x,0)/a.length).toFixed(2)),p95_ms:Number(b[Math.min(b.length-1,Math.floor(b.length*.95))].toFixed(2)),max_ms:Number(b[b.length-1].toFixed(2))};}
+function summarizeMotion(d){
+ check(d.length===SEG&&d[0]===null&&d.slice(1).every(Number.isFinite),"invalid motion series");
+ const inside=d.slice(5,176).sort((a,b)=>a-b),med=inside[Math.floor(inside.length/2)],p95=inside[Math.floor(inside.length*.95)];
+ const edgeIndices=[1,2,3,4,176,177,178,179],edges=edgeIndices.map(n=>({frame:n,mad:round(d[n])}));
+ const staticFrames=d.slice(1).filter(x=>x<.1).length;
+ const edgeStatic=edges.filter(x=>x.mad<.1).length;
+ const jumps=edgeIndices.filter(n=>!jumpGate(d[n],[p95,med]));
+ return {interior_median:round(med),interior_p95:round(p95),static_frames:staticFrames,edge_static_frames:edgeStatic,edge_samples:edges,edge_jump_frames:jumps,pass:med>.1&&edgeStatic===0&&jumps.length===0};
+}
+async function inspect(m,part,guard){
+ const input=new m.Input({source:new m.BlobSource(part),formats:m.ALL_FORMATS});
+ try{
+ const v=await input.getPrimaryVideoTrack();check(v&&!(await input.getPrimaryAudioTrack()),"expected video-only track");
+ const [stats,duration,width,height,codec,first]=await Promise.all([v.computePacketStats(),v.computeDuration(),v.getDisplayWidth(),v.getDisplayHeight(),v.getCodec(),v.getFirstTimestamp()]);
+ check(stats.packetCount===SEG&&width===W&&height===H&&codec==="avc"&&Math.abs(duration-SEGSEC)<.05&&Math.abs(first)<.05,"segment metadata mismatch");
+ const seen=new Set();let packetCount=0;
+ for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+  guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n),"duplicate packet PTS");seen.add(n);
+  check(Math.abs(p.duration-1/FPS)<.002,"packet duration");if(!packetCount)check(n===0&&p.type==="key","missing first keyframe");packetCount++;
+ }
+ check(packetCount===SEG,"packet count mismatch");
+ const sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+ const diffs=[null],frames=[];let n=0;
+ for await(const f of sink.canvases()){
+  guard();check(n<SEG&&Math.abs(f.timestamp-(first+n/FPS))<.002,"decoded PTS "+n);
+  const x=thumb(f.canvas);if(n)diffs.push(mad(frames[n-1],x));frames.push(x);n++;
+ }
+ check(n===SEG,"decode count "+n);
+ return {frames,metrics:{packets:packetCount,decoded:n,width,height,codec,duration,bytes:part.size,sha256:await sha256(part),motion:summarizeMotion(diffs),adjacent_mad:diffs.map(x=>x===null?null:round(x)),decoder_config:await configSignature(await v.getDecoderConfig())}};
+ }finally{input.dispose();}
+}
+
+// Compare thumbnails without changing the decoded orientation or color.
+// Flip candidates are diagnostic only; never used to make the gate pass.
+function transformThumb(a,mode){
+ const out=new Uint8Array(a.length);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  const xx=mode==="flip_x"||mode==="flip_xy"?THUMB_W-1-x:x;
+  const yy=mode==="flip_y"||mode==="flip_xy"?THUMB_H-1-y:y;
+  out[y*THUMB_W+x]=a[yy*THUMB_W+xx];
+ }return out;
+}
+function assess(inputs,outputs){
+ check(inputs.length===SEG&&outputs.length===SEG,"180 thumbnails required");
+ const frames=outputs.map((o,j)=>{
+  const a=inputs[j],statsIn=visualStats(a),statsOut=visualStats(o);
+  const modes=["identity","flip_x","flip_y","flip_xy"].map(mode=>({mode,mad:round(mad(a,transformThumb(o,mode)))}));
+  const local=[];for(let k=Math.max(0,j-2);k<=Math.min(SEG-1,j+2);k++)local.push({frame:k,mad:round(mad(inputs[k],o))});
+  const best=Math.min(...local.map(x=>x.mad)),nearest=local.find(x=>x.mad===best).frame;
+  const inMad=j?mad(inputs[j-1],a):null,outMad=j?mad(outputs[j-1],o):null;
+  const ratio=j&&inMad>0?outMad/inMad:null;
+  return {frame:j,same_timestamp_mad:modes[0].mad,nearest_local_input_frame:nearest,unique_nearest:local.filter(x=>x.mad===best).length===1,orientation_candidates:modes,mean_input:round(statsIn.mean),mean_output:round(statsOut.mean),sd_input:round(statsIn.sd),sd_output:round(statsOut.sd),input_adjacent_mad:j?round(inMad):null,output_adjacent_mad:j?round(outMad):null,motion_ratio:ratio===null?null:round(ratio)};
+ });
+ const inputSeries=frames.map(x=>x.input_adjacent_mad),outputSeries=frames.map(x=>x.output_adjacent_mad);
+ const inputMotion=summarizeMotion(inputSeries),outputMotion=summarizeMotion(outputSeries);
+ const inputNormal=inputMotion.pass&&inputMotion.static_frames===0;
+ const outputNormal=outputMotion.pass&&outputMotion.static_frames===0;
+ const ratioFailures=frames.slice(1).filter(x=>x.motion_ratio===null||x.motion_ratio<.5||x.motion_ratio>1.5).map(x=>x.frame);
+ const alignmentFailures=frames.filter(x=>x.nearest_local_input_frame!==x.frame||!x.unique_nearest||x.same_timestamp_mad>8||x.sd_output<=2||x.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<x.same_timestamp_mad)).map(x=>x.frame);
+ return {frames,input_motion:inputMotion,output_motion:outputMotion,ratio_failures:ratioFailures,alignment_failures:alignmentFailures,input_motion_normal:inputNormal,output_motion_normal:outputNormal,same_time_alignment_pass:alignmentFailures.length===0,status:inputNormal&&outputNormal&&ratioFailures.length===0&&alignmentFailures.length===0?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",qualification:"180F local +/-2 input alignment; 128x72 luminance, different reduction kernels; independent exported MP4 and aesthetic/color review required"};
+}
+async function connectTest(g,m,control,data,guard){
+ let output=null,input=null,finalized=false;
+ check(typeof m.VideoSampleSource==="function"&&typeof m.BufferSource==="function","missing diagnostic API");
+ const sourceThumbs=[],decodedThumbs=[],submitted=[],decoded=[],encodeTimes=[];const renderStart=performance.now();data.encoder.submitted=submitted;data.encoder.decoded=decoded;
+ try{
+  const target=new m.BufferTarget();
+  output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const source=new m.VideoSampleSource({codec:"avc",fullCodecString:"avc1.640028",bitrate:8000000,keyFrameInterval:1,latencyMode:"quality"});
+  output.addVideoTrack(source,{frameRate:FPS});
+  await deadline(output.start(),20000,"memory encoder start");guard();
+  // Identical render target/readback as V11h, plus one consumer for each mapped frame.
+  const gpuResult=await g.diagnose(guard,data,async(pixels,small,j,hash)=>{
+   guard();check(j===submitted.length&&pixels.length===FRAME_BYTES,"input order or size");
+   const t=performance.now();const sample=new m.VideoSample(pixels,{format:"RGBA",codedWidth:W,codedHeight:H,timestamp:j/FPS,duration:1/FPS});
+   try{
+    await deadline(source.add(sample,j===0?{keyFrame:true}:undefined),20000,"GPU RGBA memory encode");guard();
+    sourceThumbs.push(small);submitted.push({local_frame:j,global_frame:180+j,timestamp_s:j/FPS,sha256:hash});
+   }finally{sample.close();}
+   encodeTimes.push(performance.now()-t);$("progress").value=submitted.length;
+  });
+  data.gpu={...data.gpu,...gpuResult};check(submitted.length===SEG,"missing submitted GPU frames");data.render_elapsed_s=round((performance.now()-renderStart)/1000);data.encode_timing=summary(encodeTimes);
+  g.destroy();guard();data.stage="decode";show(data);$("status").textContent="完成映像の180Fを検査中";
+  await deadline(output.finalize(),20000,"memory finalize");finalized=true;guard();
+  check(target.buffer&&target.buffer.byteLength>0&&target.buffer.byteLength<=MAX_PART,"diagnostic memory output cap");
+  input=new m.Input({source:new m.BufferSource(target.buffer),formats:m.ALL_FORMATS});
+  const v=await deadline(input.getPrimaryVideoTrack(),20000,"diagnostic video track");
+  check(v&&!(await input.getPrimaryAudioTrack()),"unexpected track");
+  const [w,h,codec,duration,first]=await deadline(Promise.all([v.getDisplayWidth(),v.getDisplayHeight(),v.getCodec(),v.computeDuration(),v.getFirstTimestamp()]),20000,"memory metadata");
+  check(w===W&&h===H&&codec==="avc"&&Math.abs(first)<.002&&Math.abs(duration-SEGSEC)<.005,"memory metadata mismatch");
+  const pts=new Set();let packets=0;
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=Math.round((p.timestamp-first)*FPS);
+   check(n>=0&&n<SEG&&!pts.has(n)&&Math.abs(p.timestamp-first-n/FPS)<.002&&Math.abs(p.duration-1/FPS)<.002,"packet grid mismatch");
+   if(!packets)check(p.type==="key"&&n===0,"first keyframe mismatch");
+   pts.add(n);packets++;
+  }
+  check(packets===SEG&&pts.size===SEG,"packet count mismatch");
+  const sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  let n=0;
+  for await(const f of sink.canvases()){
+   guard();check(n<SEG&&Math.abs(f.timestamp-first-n/FPS)<.002,"decoded PTS mismatch");
+   const a=thumb(f.canvas);decodedThumbs.push(a);decoded.push({frame:n,timestamp_s:f.timestamp,thumbnail_sha256:await deadline(hashBytes(a),10000,"decoded thumb SHA")});n++;
+  }
+  check(n===SEG,"decoded count mismatch");
+  const assessment=assess(sourceThumbs,decodedThumbs);
+  const oldMAD=decodedThumbs.map((x,i)=>round(mad(x,control.frames[i])));
+  const inside=oldMAD.slice(5,176).sort((a,b)=>a-b);
+  const cfg=await configSignature(await v.getDecoderConfig());
+  const hash=await deadline(hashBytes(target.buffer),10000,"memory output SHA");
+  blob=new Blob([target.buffer],{type:"video/mp4"});
+  const verified=await deadline(sha256(blob),10000,"export SHA");check(verified===hash,"export bytes changed");
+  return {status:assessment.status,submitted,decoded,packets,frames:n,width:w,height:h,codec,duration,bytes:blob.size,sha256:hash,decoder_config:cfg,control_decoder_config_match:cfg===control.metrics.decoder_config,control_same_time_mad:oldMAD,control_interior_mad_median:inside[Math.floor(inside.length/2)],assessment};
+ }finally{if(input)input.dispose();if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel memory output");}catch{}}}
+}
+async function run(){
+ if(active)return;active=true;aborted=false;$("go").disabled=true;$("stop").disabled=false;
+ $("save").hidden=true;$("share").hidden=true;$("preview").hidden=true;$("progress").value=0;
+ if(url){$("preview").removeAttribute("src");$("preview").load();URL.revokeObjectURL(url);url=null;}blob=null;
+ const started=performance.now(),data={version:"V11j",status:"RUNNING",stage:"read_control",production_pass:false,video_file_generated:false,media_saved:false,old_db_write:false,source_interval_s:[6,12],requested:{width:W,height:H,fps:FPS,frames:SEG,seconds:SEGSEC,audio:"none"},gpu:{status:"NOT_RUN"},encoder:{status:"NOT_RUN"},capacity:{planned_copy_bytes:FRAME_BYTES*SEG,explicit_target_and_staging_bytes:FRAME_BYTES*2,raw_sample_copy_bytes_per_frame:FRAME_BYTES,qualification:"cumulative transfer, not resident memory; browser/device peak memory and temperature not measured"}};
+ const guard=()=>{check(!aborted,"stopped");check(!document.hidden,"Safari background");check(performance.now()-started<180000,"180-second trial limit");};
+ let g=null;show(data);
+ try{
+  const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),20000,"Mediabunny import");guard();
+  const work=async()=>{
+   const r=await getPart(ID);guard();check(validRecord(r,ID),"original checkpoint missing; no generation");
+   check(r.sha256===EXPECTED&&await sha256(r.blob)===EXPECTED,"original checkpoint SHA mismatch; no generation");
+   $("status").textContent="旧区間の180Fを検査中";
+   const control=await deadline(inspect(m,r.blob,guard),45000,"control decode");guard();data.control=control.metrics;show(data);
+   data.stage="gpu";g=await deadline(gpuSetup(),50000,"GPU setup");guard();
+   data.gpu.preflight=await deadline(g.preflight(180),50000,"GPU preflight");guard();
+   await g.frame(180);await delay();await g.frame(180);guard();
+   data.stage="gpu_to_encoder";data.encoder=await connectTest(g,m,control,data,guard);g=null;guard();
+   check(blob&&blob.size===data.encoder.bytes,"missing diagnostic MP4");
+   url=URL.createObjectURL(blob);$("preview").src=url;$("preview").hidden=false;$("preview").load();$("save").href=url;$("save").hidden=false;$("share").hidden=false;
+   data.video_file_generated=true;data.stage="complete";data.status="DIAGNOSTIC_ONLY_NOT_APPROVED";
+   data.priority=data.encoder.status==="TECHNICAL_CANDIDATE"?"SIX_SECOND_TECHNICAL_CANDIDATE_REVIEW_REQUIRED":"SIX_SECOND_VISUAL_GATE_FAIL";
+   $("status").textContent="6秒試験完了。MP4を送ってください。";
+  };
+  if(navigator.locks)await navigator.locks.request(DBNAME,{ifAvailable:true},async lock=>{check(lock,"V11a running in another tab");await work();});else await work();
+ }catch(e){data.status=aborted?"STOPPED":"BLOCK";data.error=String(e);if(e.preflight)data.preflight=e.preflight;data.priority="BLOCK_INCOMPLETE";$("status").textContent=data.status+"｜"+data.error;}
+ finally{if(g)g.destroy();data.elapsed_s=round((performance.now()-started)/1000);show(data);active=false;$("go").disabled=false;$("stop").disabled=true;}
+}
+$("go").onclick=run;$("stop").onclick=()=>{aborted=true;$("status").textContent="停止要求中";};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText($("report").value);$("copy").textContent="コピー済み";}catch{$("report").focus();$("report").select();}};
+$("share").onclick=async()=>{try{const file=new File([blob],"suilemo_v11j_segment02_DIAGNOSTIC.mp4",{type:"video/mp4"});if(!navigator.canShare?.({files:[file]}))throw Error("共有非対応：MP4保存を使用");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
+show({version:"V11j",status:"NOT_RUN",production_pass:false,video_file_generated:false,media_saved:false});
+function thumb(source){
+ const q=document.createElement("canvas");q.width=THUMB_W;q.height=THUMB_H;
+ const ctx=q.getContext("2d",{willReadFrequently:true});ctx.drawImage(source,0,0,THUMB_W,THUMB_H);
+ const p=ctx.getImageData(0,0,THUMB_W,THUMB_H).data,a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let i=0;i<a.length;i++){const k=i*4;a[i]=Math.round(.299*p[k]+.587*p[k+1]+.114*p[k+2]);}
+ q.width=1;q.height=1;return a;
+}
+function mad(a,b){check(a?.length===THUMB_W*THUMB_H&&b?.length===a.length,"missing visual thumbnail");let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);return sum/a.length;}
+function visualStats(a){let sum=0,sq=0;for(const x of a){sum+=x;sq+=x*x;}const mean=sum/a.length;return {mean,sd:Math.sqrt(Math.max(0,sq/a.length-mean*mean))};}
+const round=x=>Number(x.toFixed(3));
+async function gpuSetup(){
+ check(window.isSecureContext&&navigator.gpu,"WebGPU unavailable");
+ const [T,L,S,A,B,G,Dither]=await deadline(Promise.all([import("three/webgpu"),import("three/tsl"),import("three/addons/tsl/display/SSRNode.js"),import("three/addons/tsl/display/GTAONode.js"),import("three/addons/tsl/display/boxBlur.js"),import("three/addons/tsl/display/GaussianBlurNode.js"),import("three/addons/tsl/math/Bayer.js")]),30000,"Three.js postprocessing import");
+ check(T.REVISION==="180","unexpected Three.js revision");
+ const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
+ canvas.style.cssText="display:block;width:100%;height:auto;border-radius:8px";
+ $("stage").appendChild(canvas);
+ let renderer=null,scene=null,env=null,lost=false,device=null,uncaptured=null,post=null,scenePass=null,ssrPass=null,aoPass=null,volumeScene=null,volumePass=null,volumeBlur=null,combinedTex=null;
+ let cleaned=false;const cleanup=()=>{if(cleaned)return;cleaned=true;try{for(const item of [post,volumeBlur,volumePass,combinedTex?.renderTarget,ssrPass,aoPass,scenePass]){try{item?.dispose();}catch(e){console.warn("pass cleanup",e);}}if(scene){const geos=new Set(),mats=new Set();scene.traverse(o=>{if(o.geometry)geos.add(o.geometry);if(o.material){for(const m of [].concat(o.material))mats.add(m);}});scene.environment=null;geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());scene.clear();}if(volumeScene){volumeScene.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});volumeScene.clear();}if(env)env.dispose();if(renderer)renderer.dispose();}finally{try{if(device){if(uncaptured)device.removeEventListener("uncapturederror",uncaptured);device.destroy();}}finally{canvas.remove();canvas.width=1;canvas.height=1;}}};
+ try{
+  renderer=new T.WebGPURenderer({canvas,alpha:false,antialias:true,powerPreference:"high-performance"});
+  renderer.setPixelRatio(1);renderer.setSize(W,H,false);
+  renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=0.78;
+  renderer.outputColorSpace=T.SRGBColorSpace;renderer.shadowMap.enabled=true;
+  await deadline(renderer.init(),20000,"Three.js WebGPU init");
+  check(renderer.backend?.isWebGPUBackend===true,"WebGPU fallback is not permitted");
+  device=renderer.backend.device;check(device,"GPU device missing");
+  device.lost.then(()=>{lost=true;});
+  let gpuError="";uncaptured=e=>{gpuError=e.error?.message||"GPU error";};device.addEventListener("uncapturederror",uncaptured);
+  scene=new T.Scene();scene.background=new T.Color(0x101722);scene.fog=new T.FogExp2(0x101722,0.032);
+  // Procedural HDR lighting map: no downloaded image, no original asset.
+  const ew=256,eh=128,px=new Float32Array(ew*eh*4);
+  for(let y=0;y<eh;y++)for(let x=0;x<ew;x++){
+    const u=x/ew,v=y/eh,i=(y*ew+x)*4;
+    const panel=(u>0.12&&u<0.30&&v>0.15&&v<0.61)?5.0:0;
+    const strip=(u>0.53&&u<0.59&&v>0.10&&v<0.72)?3.0:0;
+    const top=v<0.19?1.3:0;
+    px[i]=0.055+panel+strip*0.45+top;
+    px[i+1]=0.075+panel*0.93+strip*0.70+top;
+    px[i+2]=0.11+panel*0.78+strip+top;px[i+3]=1;
+  }
+  const half=new Uint16Array(px.length);
+  for(let i=0;i<px.length;i++)half[i]=T.DataUtils.toHalfFloat(px[i]);
+  env=new T.DataTexture(half,ew,eh,T.RGBAFormat,T.HalfFloatType);
+  env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.LinearSRGBColorSpace;env.minFilter=T.LinearFilter;env.magFilter=T.LinearFilter;env.needsUpdate=true;
+  scene.environment=env;scene.environmentIntensity=0.80;
+  const material=(color,metalness,roughness)=>new T.MeshStandardMaterial({color,metalness,roughness});
+  const steel=material(0xb6c5d8,0.98,0.19),dark=material(0x263141,0.64,0.34),gold=material(0xe5ba72,0.88,0.22),floorMat=material(0x18212b,0.32,0.43);
+  const glass=new T.MeshPhysicalMaterial({color:0xe1f6ff,metalness:0,roughness:0.09,transmission:0.94,thickness:0.60,ior:1.46,attenuationColor:new T.Color(0x91c9e6),attenuationDistance:3,clearcoat:0.65,clearcoatRoughness:0.08});
+  const whiteGlow=new T.MeshBasicMaterial({color:0xeaf4ff}),blueGlow=new T.MeshBasicMaterial({color:0x4c9adf});
+  function mesh(geo,mat,x,y,z,parent=scene){const m=new T.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=mat!==glass&&mat!==whiteGlow&&mat!==blueGlow;m.receiveShadow=mat!==glass;parent.add(m);return m;}
+  // V11a — architectural rotunda, a vacant central stage for future 3D typography.
+  // All geometry is procedural, without imported textures or user source assets.
+  const stone=material(0x242a32,0.08,0.68),wallMat=material(0x101923,0.16,0.58),bronze=material(0xb38b53,0.86,0.30),inlay=material(0x637c8b,0.75,0.24);
+  const warmGlow=new T.MeshBasicMaterial({color:0xffd7a1});
+  const coolGlow=new T.MeshBasicMaterial({color:0x81bddd});
+  const box=(w,h,d,mat,x,y,z,parent=scene)=>mesh(new T.BoxGeometry(w,h,d),mat,x,y,z,parent);
+  const floor=mesh(new T.PlaneGeometry(42,42),floorMat,0,0,0);floor.rotation.x=-Math.PI/2;floor.castShadow=false;
+  function floorRing(r,width,mat,y){
+    const m=mesh(new T.RingGeometry(r-width/2,r+width/2,128),mat,0,y,0);
+    m.rotation.x=-Math.PI/2;m.castShadow=false;return m;
+  }
+  // Stepped black stone plinth, fine metallic rim, uninterrupted centre.
+  mesh(new T.CylinderGeometry(2.25,2.48,0.16,96),stone,0,0.08,0);
+  mesh(new T.CylinderGeometry(2.12,2.25,0.09,96),dark,0,0.205,0);
+  mesh(new T.CylinderGeometry(2.08,2.08,0.022,96),floorMat,0,0.262,0);
+  floorRing(2.02,0.035,bronze,0.275);
+  for(const r of [2.65,4.1,8.4,9.0,11.0])floorRing(r,r===4.1?0.024:0.042,inlay,0.004);
+  // A low open, asymmetric sculptural frame, not a floating sphere.
+  const focal=new T.Group();scene.add(focal);
+  const archGeo=new T.TorusGeometry(1.47,0.075,12,64,Math.PI);
+  mesh(archGeo,bronze,0,2.40,0,focal);
+  const legGeo=new T.BoxGeometry(0.15,2.14,0.24);
+  for(const x of [-1.47,1.47])mesh(legGeo,bronze,x,1.35,0,focal);
+  const innerArch=mesh(new T.TorusGeometry(1.33,0.035,8,64,Math.PI),steel,0,2.40,0,focal);
+  for(const x of [-1.33,1.33])box(0.07,2.14,0.14,steel,x,1.35,0,focal);
+  // Thin architectural glass panels leave the central opening free for later titles.
+  for(const x of [-1.11,1.11])box(0.39,1.76,0.065,glass,x,1.19,0.04,focal);
+  // Full 360-degree colonnade. Reused geometry reduces allocations and draw setup.
+  const BAYS=12, R=10.0;
+  const colGeo=new T.BoxGeometry(0.56,4.15,0.80),footGeo=new T.BoxGeometry(0.95,0.22,1.0),capGeo=new T.BoxGeometry(0.95,0.22,1.0);
+  const bayArchGeo=new T.TorusGeometry(2.0,0.22,10,48,Math.PI),trimGeo=new T.TorusGeometry(2.0,0.035,8,48,Math.PI);
+  const stripGeo=new T.BoxGeometry(0.035,3.25,0.035),wallGeo=new T.BoxGeometry(4.35,6.6,0.35),panelGeo=new T.BoxGeometry(1.42,3.0,0.10);
+  for(let i=0;i<BAYS;i++){
+    const a=i*2*Math.PI/BAYS,bay=new T.Group();bay.position.set(R*Math.sin(a),0,R*Math.cos(a));bay.rotation.y=a;scene.add(bay);
+    for(const x of [-2,2]){
+      mesh(footGeo,stone,x,0.11,0,bay);
+      mesh(colGeo,stone,x,2.295,0,bay);
+      mesh(capGeo,dark,x,4.48,0,bay);
+      mesh(stripGeo,i%3===0?warmGlow:coolGlow,x,2.30,-0.43,bay).castShadow=false;
+    }
+    mesh(bayArchGeo,stone,0,4.35,0,bay);
+    mesh(trimGeo,bronze,0,4.35,-0.23,bay);
+    // Recessed wall with a darkened light window; asymmetric repeats mark camera orientation.
+    mesh(wallGeo,wallMat,0,3.3,1.75,bay);
+    if(i%3===0)mesh(panelGeo,glass,0,2.9,1.50,bay);
+    else if(i%3===1)for(const x of [-0.75,0,0.75])box(0.035,2.9,0.06,blueGlow,x,2.9,1.50,bay).castShadow=false;
+    else box(1.55,0.035,0.06,whiteGlow,0,4.0,1.5,bay).castShadow=false;
+  }
+  // Continuous circular ceiling rings and radial beams form a real enclosure.
+  for(const [r,y,t] of [[9.65,6.55,0.13],[7.1,6.80,0.08],[4.6,6.95,0.07]]){
+    const m=mesh(new T.TorusGeometry(r,t,8,128),dark,0,y,0);m.rotation.x=Math.PI/2;
+  }
+  const beamGeo=new T.BoxGeometry(0.20,0.30,5.4);
+  for(let i=0;i<BAYS;i++){
+    const a=i*2*Math.PI/BAYS,m=mesh(beamGeo,stone,7.15*Math.sin(a),6.67,7.15*Math.cos(a));m.rotation.y=a;
+  }
+  const ceiling=mesh(new T.CircleGeometry(13.0,96),wallMat,0,7.12,0);ceiling.rotation.x=Math.PI/2;ceiling.castShadow=false;
+  const hemi=new T.HemisphereLight(0xcbdcff,0x22252e,0.45);scene.add(hemi);
+  const key=new T.SpotLight(0xffe2bf,72,35,Math.PI/5,0.55,2);key.position.set(-3.7,6,4);key.target.position.set(0,1,0);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.bias=-0.0004;key.shadow.normalBias=0.025;scene.add(key,key.target);
+  const rim=new T.PointLight(0x75bfff,36,24,2);rim.position.set(3.8,3.7,-3.0);scene.add(rim);
+  const fill=new T.PointLight(0xe0ebff,12,20,2);fill.position.set(4,3.0,5);scene.add(fill);
+  const camera=new T.PerspectiveCamera(48,W/H,0.1,100);
+  // Three.js r180 official SSR and GTAO patterns; shared G-buffer.
+  post=new T.PostProcessing(renderer);
+  scenePass=L.pass(scene,camera);
+  scenePass.setMRT(L.mrt({output:L.output,normal:L.normalView,metalrough:L.vec2(L.metalness,L.roughness)}));
+  const beauty=scenePass.getTextureNode("output"),normal=scenePass.getTextureNode("normal"),depth=scenePass.getTextureNode("depth"),mr=scenePass.getTextureNode("metalrough");
+  // Signed normals remain half-float; do not pack signed values in unsigned texture.
+  scenePass.getTexture("metalrough").type=T.UnsignedByteType;
+  ssrPass=S.ssr(beauty,depth,normal,mr.r,mr.g);
+  ssrPass.resolutionScale=0.5;ssrPass.quality.value=0.5;ssrPass.blurQuality.value=2;ssrPass.maxDistance.value=3.0;ssrPass.opacity.value=0.7;ssrPass.thickness.value=0.08;
+  aoPass=A.ao(depth,normal,camera);aoPass.resolutionScale=0.5;aoPass.radius.value=0.35;aoPass.scale.value=0.8;aoPass.thickness.value=0.8;
+  const reflected=L.blendColor(beauty,ssrPass);
+  const occlusion=L.mix(L.float(1),aoPass.getTextureNode().r,0.65);
+  const lit=L.vec4(reflected.rgb.mul(occlusion),reflected.a);
+  // Separate black volume scene: keep original beauty, lights, and reflections untouched.
+  // Use r180 VolumeNodeMaterial and scene-depth occlusion, but no secondary shadow map.
+  volumeScene=new T.Scene();volumeScene.background=new T.Color(0x000000);
+  const volumeMat=new T.VolumeNodeMaterial();
+  volumeMat.steps=12;
+  volumeMat.offsetNode=Dither.bayer16(L.screenCoordinate);
+  volumeMat.scatteringNode=L.Fn(()=>L.float(0.65));
+  volumeMat.depthNode=depth.sample(L.screenUV);
+  const volumeMesh=new T.Mesh(new T.BoxGeometry(26,12,26),volumeMat);volumeMesh.position.set(0,3,0);volumeMesh.frustumCulled=false;volumeMesh.receiveShadow=true;volumeScene.add(volumeMesh);
+  const volumeKey=new T.SpotLight(key.color.clone(),key.intensity,key.distance,key.angle,key.penumbra,key.decay);volumeKey.position.copy(key.position);volumeKey.target.position.copy(key.target.position);// r180 VolumetricLightingModel.direct() unconditionally multiplies lightNode.shadowNode.
+  // Explicit unity shadow node preserves the intended no-secondary-shadow-map design.
+  // AnalyticLightNode.setupShadow() accepts light.shadow.shadowNode when cast/receive are true.
+  volumeKey.castShadow=true;volumeKey.shadow.shadowNode=L.float(1);volumeScene.add(volumeKey,volumeKey.target);
+  volumePass=L.pass(volumeScene,camera,{depthBuffer:false});volumePass.setResolution(0.25);
+  volumeBlur=G.gaussianBlur(volumePass,L.uniform(0.65));
+  const atmospheric=L.vec4(lit.rgb.add(volumeBlur.rgb.mul(0.32)),lit.a);
+  // Official mobile basic DoF: depth-weighted blur of the completed composite,
+  // rather than blurring unreflected beauty and losing SSR/GTAO.
+  combinedTex=L.convertToTexture(atmospheric);
+  const focusDepth=L.uniform(6.8),focusPoint=new T.Vector3(0,1.95,0),focusView=new T.Vector3();
+  const viewZ=scenePass.getViewZNode();
+  const blurWeight=L.smoothstep(1.15,4.4,viewZ.add(focusDepth).abs());
+  const blurred=B.boxBlur(combinedTex,{size:L.int(1),separation:L.int(3)});
+  post.outputNode=L.mix(combinedTex,blurred,blurWeight);
+
+
+  function pose(index){const u=index/N,a=-Math.PI*0.15+u*2*Math.PI;camera.position.set(6.6*Math.sin(a),2.35+0.28*Math.sin(a+0.4),6.6*Math.cos(a));camera.lookAt(0,1.95,0);camera.updateMatrixWorld(true);focusDepth.value=-focusView.copy(focusPoint).applyMatrix4(camera.matrixWorldInverse).z;}
+  return {canvas,backend:"three-r180-webgpu",effects:{scene:"architectural_rotunda",camera_orbit_degrees:360,orbit_seconds:30,camera_radius_world:6.6,architecture_bays:12,ssr_resolution_scale:0.5,gtao_resolution_scale:0.5,tone_mapping_exposure:0.78,dof:"depth_weighted_box_blur",dof_focus_band_world:1.15,dof_full_blur_distance_world:4.4,volumetric:"ray_marched_single_light_depth_occlusion",volumetric_resolution_scale:0.25,volumetric_steps:12,volumetric_shadow_map:false,volumetric_shadow_node:"explicit_unity",volumetric_strength:0.32},async preflight(startIndex=0){
+    const results=[];const original=post.outputNode;
+    async function verify(label,node,index=0){
+      post.outputNode=node;post.needsUpdate=true;pose(index);
+      const started=performance.now();let thrown=null;let scoped=null;
+      device.pushErrorScope("validation");
+      try{post.render();await deadline(renderer.waitForGPU(),25000,label+" GPU completion");}
+      catch(e){thrown=e;}
+      finally{try{scoped=await deadline(device.popErrorScope(),12000,label+" GPU validation");}catch(e){if(!thrown)thrown=e;}}
+      if(thrown||scoped||lost||gpuError){const err=Error(label+": "+(thrown?.message||scoped?.message||gpuError||"GPU device lost"));err.preflight=results.concat({stage:label,status:"FAIL",error:err.message});throw err;}
+      results.push({stage:label,status:"PASS",elapsed_ms:Math.round(performance.now()-started)});
+    }
+    await verify("volume_with_depth",L.vec4(volumeBlur.rgb,1),startIndex);
+    await verify("combined_dof_at_segment_start",original,startIndex);
+    await verify("combined_dof_repeat_at_segment_start",original,startIndex);
+    return results;
+  },async frame(index){check(!lost&&!gpuError,gpuError||"GPU device lost");pose(index);post.render();await deadline(renderer.waitForGPU(),25000,"GPU completion");check(!lost&&!gpuError,gpuError||"GPU device lost");},async diagnose(guard,data,consume){
+    const prior=renderer.getRenderTarget(),bytes=W*H*4;
+    check(W*4%256===0&&bytes===8294400,"unexpected diagnostic dimensions");
+    let rt=null,staging=null;
+    const frames=[],details=[],renderTimes=[],readTimes=[];data.gpu.frames=details;
+    try{
+      rt=new T.RenderTarget(W,H,{format:T.RGBAFormat,type:T.UnsignedByteType,colorSpace:T.NoColorSpace,depthBuffer:false,stencilBuffer:false,samples:0,generateMipmaps:false});
+      staging=device.createBuffer({size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+      renderer.setRenderTarget(rt);
+      for(let j=0;j<SEG;j++){
+        guard();check(!lost&&!gpuError,gpuError||"device lost");
+        const index=180+j;let t=performance.now();pose(index);
+        post.render();await deadline(renderer.waitForGPU(),20000,"diagnostic GPU completion");renderTimes.push(performance.now()-t);guard();t=performance.now();
+        const tex=renderer.backend.get(rt.texture).texture;
+        check(tex&&tex.format==="rgba8unorm"&&tex.sampleCount===1&&(tex.usage&GPUTextureUsage.COPY_SRC)&&tex.width===W&&tex.height===H,"unexpected GPU target format/usage");
+        const cmd=device.createCommandEncoder();
+        cmd.copyTextureToBuffer({texture:tex},{buffer:staging,bytesPerRow:W*4,rowsPerImage:H},{width:W,height:H,depthOrArrayLayers:1});
+        device.queue.submit([cmd.finish()]);
+        try{
+          await deadline(staging.mapAsync(GPUMapMode.READ),20000,"diagnostic map");readTimes.push(performance.now()-t);guard();
+          const pixels=new Uint8Array(staging.getMappedRange());
+          const small=reduceRGBA(pixels),stats=visualStats(small);
+          const hash=await deadline(hashBytes(pixels),10000,"GPU pixel SHA");guard();
+          details.push({local_frame:j,global_frame:index,timestamp_s:index/FPS,camera:camera.position.toArray(),focus_depth:focusDepth.value,sha256:hash,mean:round(stats.mean),sd:round(stats.sd),adjacent_mad:j?round(mad(frames[j-1],small)):null});
+          frames.push(small);
+          if(consume)await consume(pixels,small,j,hash);guard();
+        }finally{if(staging.mapState==="mapped")staging.unmap();}
+        check(!lost&&!gpuError,gpuError||"device lost");
+        $("status").textContent="直接取得・エンコード "+(j+1)+"/180";if(j%10===0){show(data);await delay();}if(j>0&&j%30===0)await new Promise(r=>setTimeout(r,80));
+      }
+      const motion=details.slice(1).map(x=>x.adjacent_mad);
+      return {status:details.every(x=>x.sd>2)&&motion.every(x=>x>=.1)?"NORMAL":"ABNORMAL",frames:details,copy_bytes:bytes*SEG,render_timing:summary(renderTimes),readback_timing:summary(readTimes),explicit_target_and_staging_bytes:bytes*2,format:"rgba8unorm",qualification:"separate render target; not direct canvas equivalence"};
+    }finally{renderer.setRenderTarget(prior);if(staging){if(staging.mapState==="mapped")staging.unmap();staging.destroy();}rt?.dispose();}
+  },destroy:cleanup};
+ }catch(e){cleanup();throw e;}
+}
+</script></body></html>
