@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; img-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V13 準備</title><style>
 :root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
-</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>V13正式承認済み・30秒試作。原曲WAVを選択し、動画生成開始を押してください。現在の入力・容量・GPU等の安全確認を経て、5区間を連続制作・結合・検証します。Safariは前面のままにしてください。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="go" disabled>動画生成開始・続きから（30秒）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>V13正式承認済み・30秒試作。原曲WAVを選択し、動画生成開始を押してください。現在の入力・容量・GPU等の安全確認を経て、5区間を連続制作・結合・検証します。Safariは前面のままにしてください。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="diagnostic" class="secondary">第1区間の停止原因を診断（動画なし）</button><button id="go" disabled>動画生成開始・続きから（30秒）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
 const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,FRAME_BYTES=W*H*4,THUMB_W=128,THUMB_H=72;
 const $=id=>document.getElementById(id);
 const progress=$("progress"),report=$("report"),go=$("go"),stop=$("stop"),video=$("preview");
@@ -391,6 +391,27 @@ function directCaptureAdapter(ctx){const {T,renderer,device,post,pose,camera,foc
   }};}
 function summary(a){if(!a?.length)return null;const b=[...a].sort((x,y)=>x-y);return {mean_ms:Number((a.reduce((s,x)=>s+x,0)/a.length).toFixed(2)),p95_ms:Number(b[Math.min(b.length-1,Math.floor(b.length*.95))].toFixed(2)),max_ms:Number(b[b.length-1].toFixed(2))};}
 
+
+function summarizeRawDiagnostic(rows){
+ const transitions=rows.slice(1),bad=rows.filter(x=>x.sd<=2),low=transitions.filter(x=>x.adjacent_mad<.1),same=transitions.filter((x,i)=>x.sha256===rows[i].sha256);
+ return {frames:rows.length,distinct_hashes:new Set(rows.map(x=>x.sha256)).size,sd_fail_frames:bad.map(x=>x.global_frame),low_mad_frames:low.map(x=>x.global_frame),identical_rgba_frames:same.map(x=>x.global_frame),min_sd:Math.min(...rows.map(x=>x.sd)),min_thumbnail_mad:Math.min(...transitions.map(x=>x.adjacent_mad)),max_thumbnail_mad:Math.max(...transitions.map(x=>x.adjacent_mad)),min_sample_mad:Math.min(...transitions.map(x=>x.sample_mad)),sample_grid:"RGB every 16px, 8160 points, not full pixel diff",samples:rows.filter(x=>x.local_frame<12||[30,60,90,120,150,179].includes(x.local_frame)).map(({sha256,...x})=>({...x,sha_prefix:sha256.slice(0,16)}))};
+}
+async function diagnoseFirst(){
+ if(active)return;active=true;aborted=false;go.disabled=true;$("diagnostic").disabled=true;$("check").disabled=true;stop.disabled=false;stop.hidden=false;const inputs=[$("wav"),$("ref"),$("zip")];inputs.forEach(x=>x.disabled=true);
+ const begin=performance.now(),data={version:"V13",scope:"FIRST_SEGMENT_RAW_DIAGNOSTIC",status:"RUNNING",video_generated:false,checkpoint_written:false,encoder_used:false,production_pass:false,thresholds:{sd_gt:2,thumbnail_mad_gte:.1},recipe:RECIPE};let gpu=null,previous=null;const extra=[];
+ const guard=()=>{check(!aborted,"stopped");check(!document.hidden,"Safari background");check(performance.now()-begin<120000,"diagnostic timeout");};
+ try{
+  generationGate();const file=$("wav").files[0];check(file,"原曲WAVを選択してください");data.audio=await readSource(file);guard();
+  gpu=await gpuSetup();data.preflight=await gpu.preflight(0);await gpu.frame(0);await delay();await gpu.frame(0);guard();
+  const metrics=await gpu.diagnose(guard,{gpu:{}},async(pixels,small,j,hash)=>{
+   const now=new Uint8Array(120*68*3);let k=0;for(let y=0;y<H;y+=16)for(let x=0;x<W;x+=16){const i=(y*W+x)*4;now[k++]=pixels[i];now[k++]=pixels[i+1];now[k++]=pixels[i+2];}
+   let sum=0,changed=0,max=0;if(previous){for(let i=0;i<now.length;i++){const d=Math.abs(now[i]-previous[i]);sum+=d;if(d)changed++;max=Math.max(max,d);}}extra[j]={sample_mad:previous?sum/now.length:null,sample_changed_fraction:previous?changed/now.length:null,sample_max_delta:previous?max:null};previous=now;progress.value=j+1;
+  },0);
+  const rows=metrics.frames.map((x,i)=>({...x,...extra[i]}));data.raw_gate=metrics.status;data.raw=summarizeRawDiagnostic(rows);data.camera_first=rows[0].camera;data.camera_last=rows.at(-1).camera;data.render_timing=metrics.render_timing;data.status="DIAGNOSTIC_COMPLETE";$("status").textContent="診断完了。JSONを送信してください。";
+ }catch(e){data.status="DIAGNOSTIC_FAIL";data.error=String(e);$("status").textContent=data.error;}
+ finally{gpu?.destroy();data.elapsed_s=(performance.now()-begin)/1000;show(data);active=false;go.disabled=!GENERATION_ALLOWED;$("diagnostic").disabled=false;$("check").disabled=false;stop.disabled=true;inputs.forEach(x=>x.disabled=false);}
+}
+
 async function renderPart(m,id,data,guard){
  generationGate();
  let gpu=null,output=null,finalized=false;const enc=[],raw=[];const began=performance.now();
@@ -411,6 +432,7 @@ async function renderPart(m,id,data,guard){
    try{await deadline(vs.add(sample,j===0?{keyFrame:true}:undefined),20000,"direct encode");raw.push(small);}finally{sample.close();}
    enc.push(performance.now()-t);data.submitted=id*SEG+j+1;progress.value=data.submitted;
   },id);
+  if(metrics.status!=="NORMAL"){const r=metrics.frames;data.motion_failure={segment:id,sd_fail_frames:r.filter(x=>x.sd<=2).map(x=>x.global_frame),low_mad_frames:r.slice(1).filter(x=>x.adjacent_mad<.1).map(x=>x.global_frame),distinct_hashes:new Set(r.map(x=>x.sha256)).size,identical_rgba_frames:r.slice(1).filter((x,i)=>x.sha256===r[i].sha256).map(x=>x.global_frame),min_sd:Math.min(...r.map(x=>x.sd)),min_mad:Math.min(...r.slice(1).map(x=>x.adjacent_mad)),max_mad:Math.max(...r.slice(1).map(x=>x.adjacent_mad)),first_frames:r.slice(0,12)};}
   check(metrics.status==="NORMAL"&&raw.length===SEG,"GPU motion gate");
   gpu.destroy();gpu=null;guard();data.stage="segment_finalize";await deadline(output.finalize(),30000,"segment finalize");finalized=true;
   check(target.buffer&&target.buffer.byteLength>1024&&target.buffer.byteLength<=MAX_PART,"segment memory cap");
@@ -557,6 +579,7 @@ $("check").onclick=async()=>{if(active)return;active=true;preflightOK=false;$("c
  gpu=await gpuSetup(true);data.gpu={device_init:true,backend:gpu.backend,rendered:false};data.geometry=gpu.geometryQA();check(data.geometry.anchor_geometry_pass&&data.geometry.opaque_anchor_center_clear,"scene projection or center ray obstruction");preflightOK=!!data.audio.source_sha&&data.storage.pass;data.status=preflightOK?"PREFLIGHT_PASS_RENDER_UNVERIFIED":"PREFLIGHT_PARTIAL_INPUT_OR_STORAGE";
  }catch(e){data.error=String(e);data.status="BLOCK";}finally{gpu?.destroy();show(data);$("status").textContent=data.status;active=false;$("check").disabled=false;}
 };
+$("diagnostic").onclick=diagnoseFirst;
 go.disabled=!GENERATION_ALLOWED;go.onclick=async()=>{
  if(active||go.disabled)return;
  go.disabled=true;
