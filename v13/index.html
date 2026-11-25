@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; img-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V13 準備</title><style>
 :root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
-</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>動画生成禁止。V04参照から3Dシーンを接続済み。プリフライトは描画・エンコード・DB書込みを行いません。実機の映像品質は未確認です。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="go" disabled>動画生成開始（承認待ち・無効）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>V13正式承認済み・30秒試作。原曲WAVを選択し、動画生成開始を押してください。現在の入力・容量・GPU等の安全確認を経て、5区間を連続制作・結合・検証します。Safariは前面のままにしてください。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="go" disabled>動画生成開始・続きから（30秒）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
 const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,FRAME_BYTES=W*H*4,THUMB_W=128,THUMB_H=72;
 const $=id=>document.getElementById(id);
 const progress=$("progress"),report=$("report"),go=$("go"),stop=$("stop"),video=$("preview");
@@ -14,7 +14,7 @@ function show(data){report.value=JSON.stringify(data,null,2);}
 
 const SOURCE_SHA="041eeecd59f2bbe8804e437a43bb41149abc3b2bb3b1c4c305745dad3d8c7b47",PCM_SHA="ab2a53e64226f541446c389595d893aa51f7cdc8257be8fd98355415e36104b7",REF_SHA="4366851d0e115206510343674ad913fc3ae2b2517c40d3f34b96fb98eed5a7b7",ZIP_SHA="ab8d37e939484f800744772acf9cace105a5c90c4987db6512facc8df0366273",DESIGN="V13-30s-V01";
 const DBNAME="suilemo-v13-real-music-30s-v1",RECIPE="v13-30s-v01-art-adapter",IDENTITY=[DESIGN,SOURCE_SHA,REF_SHA,ZIP_SHA].join(":");
-const GENERATION_ALLOWED=false,SCENE_READY=true;
+const GENERATION_ALLOWED=true,SCENE_READY=true;
 let sourcePCM=null,envelope=null,active=false;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 function hermite(x,a,b,p,q,v,w){const d=(b-a)/FPS,z=clamp((x-a)/(b-a),0,1),z2=z*z,z3=z2*z;return (2*z3-3*z2+1)*p+(z3-2*z2+z)*d*v+(-2*z3+3*z2)*q+(z3-z2)*d*w;}
@@ -557,8 +557,21 @@ $("check").onclick=async()=>{if(active)return;active=true;preflightOK=false;$("c
  gpu=await gpuSetup(true);data.gpu={device_init:true,backend:gpu.backend,rendered:false};data.geometry=gpu.geometryQA();check(data.geometry.anchor_geometry_pass&&data.geometry.opaque_anchor_center_clear,"scene projection or center ray obstruction");preflightOK=!!data.audio.source_sha&&data.storage.pass;data.status=preflightOK?"PREFLIGHT_PASS_RENDER_UNVERIFIED":"PREFLIGHT_PARTIAL_INPUT_OR_STORAGE";
  }catch(e){data.error=String(e);data.status="BLOCK";}finally{gpu?.destroy();show(data);$("status").textContent=data.status;active=false;$("check").disabled=false;}
 };
-go.disabled=!GENERATION_ALLOWED;go.onclick=()=>run().catch(e=>{$("status").textContent=String(e);});stop.onclick=()=>{aborted=true;};
+go.disabled=!GENERATION_ALLOWED;go.onclick=async()=>{
+ if(active||go.disabled)return;
+ go.disabled=true;
+ const inputs=[$("wav"),$("ref"),$("zip")];inputs.forEach(x=>x.disabled=true);
+ try{
+  generationGate();
+  check($("wav").files[0],"原曲WAVを選択してください");
+  if(!preflightOK)await $("check").onclick();
+  check(preflightOK,"安全確認が合格していません。検査結果を確認してください。");
+  $("check").disabled=true;
+  await run();
+ }catch(e){$("status").textContent=String(e);}
+ finally{inputs.forEach(x=>x.disabled=false);$("check").disabled=false;go.disabled=!GENERATION_ALLOWED;}
+};stop.onclick=()=>{aborted=true;};
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);}catch{report.select();}};
 $("share").onclick=async()=>{try{const file=new File([blob],"suilemo_v13_real_music.mp4",{type:"video/mp4"});check(navigator.canShare?.({files:[file]}),"share unavailable");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
-show({version:"V13",status:"SCENE_IMPLEMENTED_PREFLIGHT_PENDING",generation_allowed:false,numeric:numericQA()});
+show({version:"V13",status:"GENERATION_APPROVED_NOT_STARTED",generation_allowed:GENERATION_ALLOWED,numeric:numericQA()});
 </script></body></html>
