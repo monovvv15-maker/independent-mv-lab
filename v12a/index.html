@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V12a</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style></head><body><main><h1>iPhone MV V12a｜再結合専用</h1><p>保存済みV12の900Fを読み取り専用で再結合します。GPU描画・映像再エンコード・保存区間の更新や削除はありません。</p><section><h2>音声補正検証</h2><p>Safariを前面にしたまま実行。全5区間のSHAが一致しなければ停止します。音声は従来のテスト音です。</p><button id="go">保存済み900Fを再結合</button><p id="saved">保存区間：確認中</p><button id="stop" class="secondary" disabled>停止</button><div id="stage"></div><progress id="progress" max="900" value="0"></progress><p id="status" role="status">未実行</p><video id="preview" controls playsinline preload="metadata" hidden></video><a id="save" class="save" download="suilemo_mobile_v12a_test.mp4" hidden>MP4を保存</a><button id="share" class="secondary" hidden>共有・ファイルに保存</button></section><section><h2>検査結果</h2><button id="copy" class="secondary">結果をコピー</button><textarea id="report" readonly aria-label="検査結果"></textarea><small>Mediabunny (MPL-2.0) の固定バージョン取得のみCDNに接続します。制作素材や結果を送信しません。再生・聴感・実機安定性は目視確認が必要です。</small></section><p><a href="../">V04 接続診断へ戻る</a></p></main><script>
+"use strict";
+const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,DBNAME="suilemo-v12-direct-rgba-30s-v1",RECIPE="v10-19f559cc-direct-rgba-v12",FRAME_BYTES=W*H*4,IMPORT_SHA="dac3229b3e74b5081945562440c22fff584053a9bc29efe16814334a34435a87",THUMB_W=128,THUMB_H=72;
+const $=id=>document.getElementById(id);
+const go=$("go"),stop=$("stop"),report=$("report"),video=$("preview"),progress=$("progress");
+let active=false,aborted=false,blob=null,url=null;
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{let timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function evaluate(m){return m.packets===N&&m.audio_packets>0&&m.width===W&&m.height===H&&Math.abs(m.duration-D)<=0.10&&Math.abs(m.video_duration-D)<=0.05&&Math.abs(m.audio_duration-D)<=0.10&&m.avc&&m.aac&&m.bytes>1024;}
+function audioBuffer(sec){
+ const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});
+ for(let ch=0;ch<2;ch++){const x=b.getChannelData(ch);for(let i=0;i<SR;i++){const t=i/SR;const env=Math.max(0,Math.min(1,t/0.015,(0.18-t)/0.04));x[i]=0.065*env*Math.sin(2*Math.PI*(sec%2?660:440)*t);}}
+ return b;
+}
+// Thumbnail QA: tiny diagnostic readback, never full-frame CPU rendering.
+const SAMPLE_FRAMES=[0,1,2,177,178,179];
+const hashBytes=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),n=>n.toString(16).padStart(2,"0")).join("");
+function summarizeMotion(d){
+ check(d.length===SEG&&d[0]===null&&d.slice(1).every(Number.isFinite),"invalid motion series");
+ const inside=d.slice(5,176).sort((a,b)=>a-b),med=inside[Math.floor(inside.length/2)],p95=inside[Math.floor(inside.length*.95)];
+ const edgeIndices=[1,2,3,4,176,177,178,179],edges=edgeIndices.map(n=>({frame:n,mad:round(d[n])}));
+ const staticFrames=d.slice(1).filter(x=>x<.1).length;
+ const edgeStatic=edges.filter(x=>x.mad<.1).length;
+ const jumps=edgeIndices.filter(n=>!jumpGate(d[n],[p95,med]));
+ return {interior_median:round(med),interior_p95:round(p95),static_frames:staticFrames,edge_static_frames:edgeStatic,edge_samples:edges,edge_jump_frames:jumps,pass:med>.1&&edgeStatic===0&&jumps.length===0};
+}
+function transformThumb(a,mode){
+ const out=new Uint8Array(a.length);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  const xx=mode==="flip_x"||mode==="flip_xy"?THUMB_W-1-x:x;
+  const yy=mode==="flip_y"||mode==="flip_xy"?THUMB_H-1-y:y;
+  out[y*THUMB_W+x]=a[yy*THUMB_W+xx];
+ }return out;
+}
+function assess(inputs,outputs){
+ check(inputs.length===SEG&&outputs.length===SEG,"180 thumbnails required");
+ const frames=outputs.map((o,j)=>{
+  const a=inputs[j],statsIn=visualStats(a),statsOut=visualStats(o);
+  const modes=["identity","flip_x","flip_y","flip_xy"].map(mode=>({mode,mad:round(mad(a,transformThumb(o,mode)))}));
+  const local=[];for(let k=Math.max(0,j-2);k<=Math.min(SEG-1,j+2);k++)local.push({frame:k,mad:round(mad(inputs[k],o))});
+  const best=Math.min(...local.map(x=>x.mad)),nearest=local.find(x=>x.mad===best).frame;
+  const inMad=j?mad(inputs[j-1],a):null,outMad=j?mad(outputs[j-1],o):null;
+  const ratio=j&&inMad>0?outMad/inMad:null;
+  return {frame:j,same_timestamp_mad:modes[0].mad,nearest_local_input_frame:nearest,unique_nearest:local.filter(x=>x.mad===best).length===1,orientation_candidates:modes,mean_input:round(statsIn.mean),mean_output:round(statsOut.mean),sd_input:round(statsIn.sd),sd_output:round(statsOut.sd),input_adjacent_mad:j?round(inMad):null,output_adjacent_mad:j?round(outMad):null,motion_ratio:ratio===null?null:round(ratio)};
+ });
+ const inputSeries=frames.map(x=>x.input_adjacent_mad),outputSeries=frames.map(x=>x.output_adjacent_mad);
+ const inputMotion=summarizeMotion(inputSeries),outputMotion=summarizeMotion(outputSeries);
+ const inputNormal=inputMotion.pass&&inputMotion.static_frames===0;
+ const outputNormal=outputMotion.pass&&outputMotion.static_frames===0;
+ const ratioFailures=frames.slice(1).filter(x=>x.motion_ratio===null||x.motion_ratio<.5||x.motion_ratio>1.5).map(x=>x.frame);
+ const alignmentFailures=frames.filter(x=>x.nearest_local_input_frame!==x.frame||!x.unique_nearest||x.same_timestamp_mad>8||x.sd_output<=2||x.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<x.same_timestamp_mad)).map(x=>x.frame);
+ return {frames,input_motion:inputMotion,output_motion:outputMotion,ratio_failures:ratioFailures,alignment_failures:alignmentFailures,input_motion_normal:inputNormal,output_motion_normal:outputNormal,same_time_alignment_pass:alignmentFailures.length===0,status:inputNormal&&outputNormal&&ratioFailures.length===0&&alignmentFailures.length===0?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",qualification:"180F local +/-2 input alignment; 128x72 luminance, different reduction kernels; independent exported MP4 and aesthetic/color review required"};
+}
+
+function thumb(source){
+ const q=document.createElement("canvas");q.width=THUMB_W;q.height=THUMB_H;
+ const ctx=q.getContext("2d",{willReadFrequently:true});ctx.drawImage(source,0,0,THUMB_W,THUMB_H);
+ const p=ctx.getImageData(0,0,THUMB_W,THUMB_H).data,a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let i=0;i<a.length;i++){const k=i*4;a[i]=Math.round(.299*p[k]+.587*p[k+1]+.114*p[k+2]);}
+ q.width=1;q.height=1;return a;
+}
+function mad(a,b){check(a?.length===THUMB_W*THUMB_H&&b?.length===a.length,"missing visual thumbnail");let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);return sum/a.length;}
+function visualStats(a){let sum=0,sq=0;for(const x of a){sum+=x;sq+=x*x;}const mean=sum/a.length;return {mean,sd:Math.sqrt(Math.max(0,sq/a.length-mean*mean))};}
+const round=x=>Number(x.toFixed(3));
+function jumpGate(d,neighbors){return d<=Math.max(8,2.5*Math.max(...neighbors));}
+
+function boundaryGate(d,left,right){return d>=.1&&jumpGate(d,[left,right]);}
+function compactAssessment(q){return {status:q.status,input_motion:q.input_motion,output_motion:q.output_motion,ratio_failures:q.ratio_failures,alignment_failures:q.alignment_failures,max_same_timestamp_mad:Math.max(...q.frames.map(x=>x.same_timestamp_mad))};}
+
+// ISO-BMFF edit-list verification; no rewrite of source or packet timestamps.
+function audioEdit(bytes){
+ const d=new DataView(bytes),four=p=>String.fromCharCode(...new Uint8Array(bytes,p,4)),u=p=>d.getUint32(p),i=p=>d.getInt32(p);
+ const u64=p=>{const v=Number(d.getBigUint64(p));check(Number.isSafeInteger(v),"box integer overflow");return v;};
+ const i64=p=>{const v=Number(d.getBigInt64(p));check(Number.isSafeInteger(v),"edit integer overflow");return v;};
+ function boxes(start,end){const out=[];for(let p=start;p<end;){check(end-p>=8,"truncated MP4 box");let n=u(p),h=8;if(n===1){check(end-p>=16,"truncated extended box");n=u64(p+8);h=16;}else if(n===0)n=end-p;check(n>=h&&p+n<=end,"invalid MP4 box bounds");out.push({type:four(p+4),start:p+h,end:p+n});p+=n;}return out;}
+ function children(b){return boxes(b.start,b.end);}
+ function one(list,type){const x=list.filter(b=>b.type===type);check(x.length===1,"missing/ambiguous "+type);return x[0];}
+ function scale(b){const v=d.getUint8(b.start);check(v===0||v===1,"unsupported header version");const p=b.start+(v===1?20:12);check(p+4<=b.end,"truncated timescale");const n=u(p);check(n>0,"invalid timescale");return n;}
+ const moov=one(boxes(0,bytes.byteLength),"moov"),mc=children(moov),movie=scale(one(mc,"mvhd"));const tracks=mc.filter(b=>b.type==="trak").map(t=>{const c=children(t),md=children(one(c,"mdia")),h=one(md,"hdlr");check(h.start+12<=h.end,"truncated handler");return {c,md,type:four(h.start+8)};});
+ const aud=tracks.filter(t=>t.type==="soun");check(aud.length===1,"audio track identity");
+ const media=scale(one(aud[0].md,"mdhd")),ed=aud[0].c.filter(b=>b.type==="edts");
+ if(!ed.length)return {present:false,movie_timescale:movie,media_timescale:media,entries:[]};
+ check(ed.length===1,"multiple edit boxes");const e=one(children(ed[0]),"elst"),v=d.getUint8(e.start);check(v===0||v===1,"unsupported edit version");check(e.start+8<=e.end,"truncated elst");
+ const n=u(e.start+4),stride=v===1?20:12;check(n<=8&&e.start+8+n*stride===e.end,"edit entry size");const entries=[];
+ for(let j=0;j<n;j++){const p=e.start+8+j*stride,seg=v===1?u64(p):u(p),mt=v===1?i64(p+8):i(p+4),rate=i(p+(v===1?16:8))/65536;entries.push({duration_s:seg/movie,media_time_s:mt===-1?null:mt/media,media_rate:rate});}
+ return {present:true,movie_timescale:movie,media_timescale:media,entries};
+}
+function presentationCheck(edit,pFirst,pEnd,dFirst,dEnd){
+ const near=(x,y,t)=>Number.isFinite(x)&&Math.abs(x-y)<=t;
+ const raw=Number.isFinite(pFirst)&&Number.isFinite(dFirst)&&pFirst<=.05&&dFirst<=.05&&near(pEnd,D,.1)&&near(dEnd,D,.1);
+ if(!raw)return false;
+ if(pFirst<-.0001||dFirst<-.0001){
+  if(!edit.present||edit.entries.length!==1)return false;
+  const e=edit.entries[0];
+  return e.media_rate===1&&e.media_time_s>0&&near(-pFirst,e.media_time_s,.002)&&near(-dFirst,e.media_time_s,.002)&&near(e.duration_s,D,.1)&&dEnd>=D-1/SR;
+ }
+ return !edit.present&&near(pFirst,0,.05)&&near(dFirst,0,.05);
+}
+const BIN=240,BINS=D*SR/BIN; // 5 ms RMS bins, both channels.
+function audioMeter(){return {sum:[new Float64Array(BINS),new Float64Array(BINS)],count:[new Uint16Array(BINS),new Uint16Array(BINS)],freq:Array.from({length:2},()=>Array.from({length:D},()=>[0,0,0,0])),covered:0,next:0,coverage_errors:0,pre_samples:0,post_samples:0,pre_peak:0,post_peak:0,peak:0};}
+function meterBlock(q,buf,ts){
+ check(buf.sampleRate===SR&&buf.numberOfChannels===2,"audio sample format");
+ const n=buf.length,base=Math.round(ts*SR),channels=[buf.getChannelData(0),buf.getChannelData(1)];check(Math.abs(ts*SR-base)<.1,"audio sample grid");
+ for(let k=0;k<n;k++){const ix=base+k,valid=ix>=0&&ix<D*SR;
+  if(valid){if(ix!==q.next)q.coverage_errors++;q.next=ix+1;q.covered++;}
+  else if(ix<0)q.pre_samples++;else q.post_samples++;
+  for(let ch=0;ch<2;ch++){const x=channels[ch][k];check(Number.isFinite(x),"invalid PCM");const abs=Math.abs(x);
+   if(!valid){if(ix<0)q.pre_peak=Math.max(q.pre_peak,abs);else q.post_peak=Math.max(q.post_peak,abs);continue;}
+   q.peak=Math.max(q.peak,abs);const bin=Math.floor(ix/BIN);q.sum[ch][bin]+=x*x;q.count[ch][bin]++;
+   const sec=Math.floor(ix/SR),t=(ix%SR)/SR;if(t>=.025&&t<.12){const a=2*Math.PI*440*t,b=2*Math.PI*660*t,f=q.freq[ch][sec];f[0]+=x*Math.sin(a);f[1]+=x*Math.cos(a);f[2]+=x*Math.sin(b);f[3]+=x*Math.cos(b);}
+  }
+ }
+}
+function assessAudio(q){
+ const refs=Array.from({length:2},()=>new Float64Array(BINS));
+ for(let sec=0;sec<D;sec++){const b=audioBuffer(sec);for(let ch=0;ch<2;ch++){const x=b.getChannelData(ch);for(let k=0;k<SR;k++)refs[ch][sec*200+Math.floor(k/BIN)]+=x[k]*x[k];}}
+ const rows=[];for(let ch=0;ch<2;ch++)for(let sec=0;sec<D;sec++){
+  const start=sec*200,actual=q.sum[ch],ref=refs[ch];let best=-Infinity,lag=null,zero=null;
+  // Each 180ms pulse is separated by 820ms silence. Compare RMS envelope at zero
+  // and across +/-100ms shifts, on a fixed 5ms grid without shifting output.
+  for(let shift=-20;shift<=20;shift++){let xy=0,xx=0,yy=0;for(let k=0;k<50;k++){const a=Math.sqrt(ref[start+k]/BIN),ix=start+k+shift,b=ix>=0&&ix<BINS?Math.sqrt(actual[ix]/BIN):0;xy+=a*b;xx+=a*a;yy+=b*b;}const c=yy>0?xy/Math.sqrt(xx*yy):0;if(shift===0)zero=c;if(c>best){best=c;lag=shift*5;}}
+  let se=0,re=0,quiet=0;for(let k=0;k<200;k++){se+=actual[start+k];re+=ref[start+k];if(k>=50)quiet=Math.max(quiet,Math.sqrt(actual[start+k]/BIN));}
+  const f=q.freq[ch][sec],p440=Math.hypot(f[0],f[1]),p660=Math.hypot(f[2],f[3]),correct=sec%2?p660:p440,wrong=sec%2?p440:p660,ratio=Math.sqrt(se/re);
+  rows.push({channel:ch,second:sec,zero_lag_correlation:round(zero),best_lag_ms:lag,energy_ratio:round(ratio),wrong_frequency_ratio:round(wrong/Math.max(correct,1e-12)),quiet_rms:round(quiet),pass:zero>=.95&&Math.abs(lag)<=10&&ratio>=.8&&ratio<=1.2&&correct>1&&wrong/correct<.2&&quiet<.005});
+ }
+ return {coverage_pass:q.coverage_errors===0&&q.covered===D*SR&&q.next===D*SR&&q.count.every(c=>c.every(n=>n===BIN)),covered_sample_frames:q.covered,coverage_errors:q.coverage_errors,pulses_pass:rows.filter(x=>x.pass).length,pulses_expected:2*D,max_abs_lag_ms:Math.max(...rows.map(x=>Math.abs(x.best_lag_ms))),min_zero_lag_correlation:Math.min(...rows.map(x=>x.zero_lag_correlation)),failures:rows.filter(x=>!x.pass),pre_samples:q.pre_samples,post_samples:q.post_samples,pre_peak:round(q.pre_peak),post_peak:round(q.post_peak),peak:round(q.peak)};
+}
+
+async function probeFile(m,b,verified,guard){
+ const input=new m.Input({source:new m.BlobSource(b),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),a=await input.getPrimaryAudioTrack();check(v&&a,"missing video/audio");
+  const [width,height,vc,ac,vd,ad,du,mime,first]=await Promise.all([v.getDisplayWidth(),v.getDisplayHeight(),v.getCodec(),a.getCodec(),v.computeDuration(),a.computeDuration(),input.computeDuration(),input.getMimeType(),v.getFirstTimestamp()]);
+  check(width===W&&height===H&&vc==="avc"&&ac==="aac"&&Math.abs(first)<.002,"final stream metadata mismatch");
+  check(await configSignature(await v.getDecoderConfig())===verified[0].meta.config_signature,"final AVC configuration mismatch");
+  let packets=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=Math.round((p.timestamp-first)*FPS);
+   check(n>=0&&n<N&&!seen.has(n)&&Math.abs(p.timestamp-first-n/FPS)<.002&&Math.abs(p.duration-1/FPS)<.002,"final video PTS grid");
+   check(await hashBytes(p.data)===verified[Math.floor(n/SEG)].hashes[n%SEG],"final packet SHA mismatch F"+n);
+   if(n%SEG===0)check(p.type==="key","final boundary keyframe missing");
+   seen.add(n);packets++;
+  }
+  check(packets===N&&seen.size===N,"final video packet count");
+  const sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  const changes=[null],diffs=[];let n=0,prev=null;
+  for await(const f of sink.canvases()){
+   guard();check(n<N&&Math.abs(f.timestamp-first-n/FPS)<.002,"final decoded PTS "+n);
+   const x=thumb(f.canvas),d=mad(x,verified[Math.floor(n/SEG)].frames[n%SEG]);
+   diffs.push(d);check(d<=1,"final frame differs from verified segment F"+n);
+   const st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"final invalid pixels F"+n);
+   if(prev)changes.push(mad(prev,x));prev=x;n++;
+  }
+  check(n===N,"final decoded count");
+  const boundaries=[];for(let id=1;id<PARTS;id++){const k=id*SEG;boundaries.push({frame:k,mad:round(changes[k]),left:round(changes[k-1]),right:round(changes[k+1]),pass:boundaryGate(changes[k],changes[k-1],changes[k+1])});}
+  const statics=changes.slice(1).filter(x=>x<.1).length;
+  const jumps=changes.flatMap((x,k)=>k>1&&k<N-1&&!jumpGate(x,[changes[k-1],changes[k+1]])?[k]:[]);
+  let audioPackets=0,apFirst=null,apEnd=null,maxPacketGap=0;
+  for await(const p of new m.EncodedPacketSink(a).packets()){
+   guard();if(apFirst===null)apFirst=p.timestamp;
+   if(apEnd!==null)maxPacketGap=Math.max(maxPacketGap,Math.abs(p.timestamp-apEnd));
+   apEnd=p.timestamp+p.duration;audioPackets++;
+  }
+  let samples=0,aFirst=null,aEnd=null,maxGap=0,rate=null,channels=null;
+  const meter=audioMeter(),edit=audioEdit(await b.arrayBuffer());
+  for await(const z of new m.AudioSampleSink(a).samples()){
+   try{
+    guard();if(aFirst===null)aFirst=z.timestamp;
+    if(aEnd!==null)maxGap=Math.max(maxGap,Math.abs(z.timestamp-aEnd));
+    aEnd=z.timestamp+z.duration;samples++;
+    const buf=z.toAudioBuffer();rate=buf.sampleRate;channels=buf.numberOfChannels;meterBlock(meter,buf,z.timestamp);
+   }finally{z.close();}
+  }
+  const wave=assessAudio(meter);
+  const checks={format:audioPackets>0&&samples>0&&rate===SR&&channels===2,raw_continuity:maxPacketGap<=.002&&maxGap<=.002,edit_presentation:presentationCheck(edit,apFirst,apEnd,aFirst,aEnd),pcm_coverage:wave.coverage_pass,pulse_alignment:wave.pulses_pass===wave.pulses_expected,peak:wave.peak>.015&&wave.peak<.2};
+  const audioPass=Object.values(checks).every(Boolean);
+  return {visual:{pass:statics===0&&jumps.length===0&&boundaries.every(x=>x.pass),decoded_frames:n,static_frames:statics,jump_frames:jumps,boundaries,max_segment_to_final_mad:round(Math.max(...diffs)),packet_hashes_verified:packets},audio:{pass:audioPass,packets:audioPackets,decoded_samples:samples,sample_rate:rate,channels,first_timestamp:aFirst,end_timestamp:aEnd,packet_first_timestamp:apFirst,packet_end_timestamp:apEnd,max_packet_gap_s:maxPacketGap,max_decoded_gap_s:maxGap,edit_list:edit,presentation_start_s:checks.edit_presentation?0:null,waveform:wave,checks},packets,audio_packets:audioPackets,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:packets/vd,mime,video_codec:vc,audio_codec:ac,avc:vc==="avc",aac:ac==="aac",bytes:b.size,sha256:await sha256(b)};
+ }finally{input.dispose();}
+}
+function metadataCheck(){
+ return deadline(new Promise((res,rej)=>{
+ const ready=()=>res({width:video.videoWidth,height:video.videoHeight,duration:video.duration});
+ video.addEventListener("loadedmetadata",ready,{once:true});
+ video.addEventListener("error",()=>rej(Error("Safari MP4 metadata read failed")),{once:true});
+ video.src=url;video.load();
+ if(video.readyState>=1)ready();
+ }),15000,"Safari MP4 metadata");
+}
+function show(data){report.value=JSON.stringify(data,null,2);}
+// Persistent checkpoints: each completed video-only MP4 is committed atomically.
+// Never rerender a verified segment. No audio concatenation/priming gaps.
+const sha256=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+function dbOpen(){return deadline(new Promise((resolve,reject)=>{const r=indexedDB.open(DBNAME,1);r.onupgradeneeded=()=>{r.transaction.abort();reject(Error("V12保存領域が存在しません。再制作せず停止します。"));};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error("IndexedDB blocked"));}),15000,"checkpoint read-only open");}
+async function dbOp(fn){const db=await dbOpen();try{return await deadline(new Promise((resolve,reject)=>{const tx=db.transaction("segments","readonly");let req;try{req=fn(tx.objectStore("segments"));}catch(e){tx.abort();reject(e);return;}tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error||req.error);tx.onabort=()=>reject(tx.error||Error("checkpoint transaction aborted"));}),20000,"checkpoint readonly transaction");}finally{db.close();}}
+const getPart=id=>dbOp(o=>o.get(id));
+const keys=()=>dbOp(o=>o.getAllKeys());
+const EXPECTED=[
+["6a9484089ffdeeb519b3bed5a339106e07f4b7057929a79fe0f6878442031d8e",4768480],
+["bdbf84a543b575d03f244043384d0345f61447974a522f51ea1c8ede7eec6a68",3503144],
+["ed1aad968e09044a0f6d0c9dc9c8815e2848f9494a39fdbde7916a0d962d7ff6",3684927],
+["8afbe0593b5cec9d949f8ed6cd0589b80d289c506a9864d8768c18eee9861796",3845384],
+["f1004aa06157fc49142cfb50cb0829462bb41883934637984c5dafbd6b219f26",4234727]];
+function exactRecord(r,id){return validRecord(r,id)&&r.sha256===EXPECTED[id][0]&&r.bytes===EXPECTED[id][1]&&r.imported!==true&&Array.isArray(r.packet_hashes)&&r.packet_hashes.length===SEG&&r.packet_hashes.every(x=>/^[0-9a-f]{64}$/.test(x));}
+async function refreshSaved(){try{const k=await keys();$("saved").textContent="保存区間："+k.length+" / "+PARTS+"（再開時にSHA検証）";}catch(e){$("saved").textContent="保存領域エラー："+String(e);}}
+function frameIndex(t,start){const x=(t-start)*FPS,n=Math.round(x);check(Math.abs(x-n)<0.015&&n>=0&&n<SEG,"off-grid segment timestamp: "+t);return n;}
+function validRecord(r,id){return r?.id===id&&r.recipe===RECIPE&&r.start===id*SEG&&r.count===SEG&&r.blob instanceof Blob&&r.blob.size===r.bytes&&r.bytes>1024&&r.bytes<=MAX_PART&&/^[0-9a-f]{64}$/.test(r.sha256);}
+async function configSignature(c){
+ check(c&&c.description&&c.codec&&c.codedWidth===W&&c.codedHeight===H,"missing AVC decoder config");
+ const desc=c.description instanceof ArrayBuffer?new Uint8Array(c.description):new Uint8Array(c.description.buffer,c.description.byteOffset,c.description.byteLength);
+ return JSON.stringify([c.codec,c.codedWidth,c.codedHeight,c.displayAspectWidth??null,c.displayAspectHeight??null,c.colorSpace?.primaries??null,c.colorSpace?.transfer??null,c.colorSpace?.matrix??null,c.colorSpace?.fullRange??null,await sha256(new Blob([desc]))]);
+}
+
+async function inspectPart(m,r,id,guard){
+ check(exactRecord(r,id),"V12 exact checkpoint mismatch "+id);check(await sha256(r.blob)===r.sha256,"checkpoint SHA mismatch "+id);
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack();check(v&&!(await input.getPrimaryAudioTrack()),"segment track mismatch");
+  const sig=await configSignature(await v.getDecoderConfig());
+  check(await v.getCodec()==="avc"&&await v.getDisplayWidth()===W&&await v.getDisplayHeight()===H,"segment resolution/codec");
+  check(Math.abs(await v.computeDuration()-SEGSEC)<.005,"segment duration");
+  const first=await v.getFirstTimestamp();check(Math.abs(first)<.002,"segment first PTS");
+  const hashes=[],seen=new Set();let packets=0;
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&Math.abs(p.duration-1/FPS)<.002,"segment PTS");
+   if(!packets)check(n===0&&p.type==="key","segment first keyframe");
+   seen.add(n);hashes[n]=await hashBytes(p.data);packets++;
+  }
+  check(packets===SEG&&seen.size===SEG,"segment packet count");
+  if(r.packet_hashes)check(r.packet_hashes.length===SEG&&hashes.every((x,i)=>x===r.packet_hashes[i]),"checkpoint packet hashes differ");
+  const frames=[],diffs=[null],sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  for await(const f of sink.canvases()){
+   guard();const n=frames.length;check(n<SEG&&Math.abs(f.timestamp-first-n/FPS)<.002,"segment decoded PTS");
+   const x=thumb(f.canvas),st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"segment invalid pixels");
+   if(n)diffs.push(mad(frames[n-1],x));frames.push(x);
+  }
+  check(frames.length===SEG,"segment decoded count");
+  const motion=summarizeMotion(diffs);check(motion.pass&&motion.static_frames===0,"segment motion gate "+id);
+  const jumps=diffs.flatMap((x,k)=>k>1&&k<SEG-1&&!jumpGate(x,[diffs[k-1],diffs[k+1]])?[k]:[]);check(!jumps.length,"segment internal jump");
+  let assessment;
+  if(r.imported===true){
+   check(id===1&&r.sha256===IMPORT_SHA&&r.bytes===3503144,"import identity");
+   assessment={status:"V11J_EXACT_ORIGINAL_REUSE",output_motion:motion,qualification:"previous V11j input-output QA; exact MP4 SHA, current full decode"};
+  }else{
+   check(Array.isArray(r.raw)&&r.raw.length===SEG,"missing raw QA thumbnails");
+   const q=assess(r.raw,frames);check(q.status==="TECHNICAL_CANDIDATE","input/output segment QA "+id+" "+JSON.stringify(compactAssessment(q)));assessment=compactAssessment(q);
+  }
+  return {frames,hashes,meta:{id,frames:SEG,bytes:r.bytes,sha256:r.sha256,config_signature:sig,visual:assessment}};
+ }finally{input.dispose();}
+}
+async function muxPart(m,r,id,expected,guard,consume){
+ check(exactRecord(r,id)&&r.sha256===expected.meta.sha256&&await sha256(r.blob)===r.sha256,"mux source changed");
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),cfg=await v.getDecoderConfig(),sig=await configSignature(cfg),first=await v.getFirstTimestamp();
+  check(sig===expected.meta.config_signature,"mux config changed");let count=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&await hashBytes(p.data)===expected.hashes[n],"mux packet changed");seen.add(n);
+   await consume(p,n,cfg,sig,count++);
+  }check(count===SEG,"mux segment count");
+ }finally{input.dispose();}
+}
+async function assemble(m,data,guard,verified){
+ let output=null,finalized=false;
+ try{
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.EncodedVideoPacketSource("avc"),as=new m.AudioBufferSource({codec:"aac",bitrate:192000});
+  output.addVideoTrack(vs,{frameRate:FPS});output.addAudioTrack(as);await deadline(output.start(),20000,"assembly start");
+  let signature=null,sequence=0,audioSec=0;
+  for(let id=0;id<PARTS;id++){
+   guard();const rec=await getPart(id);
+   await muxPart(m,rec,id,verified[id],guard,async(pkt,n,cfg,sig,count)=>{
+    if(signature===null)signature=sig;
+    check(sig===signature,"AVC configuration differs across segments; safe stop, no remux");
+    await deadline(vs.add(pkt.clone({timestamp:(id*SEG+n)/FPS,duration:1/FPS,sequenceNumber:sequence++}),count===0?{decoderConfig:cfg}:undefined),20000,"packet mux");
+    // Interleave audio in approximately one-second steps to bound mux buffering.
+    while(audioSec<D&&audioSec<=Math.floor((id*SEG+count)/FPS)){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+   });
+   data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;show(data);await delay();
+  }
+  while(audioSec<D){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+  check(sequence===N&&audioSec===D,"assembly count mismatch");guard();
+  await deadline(output.finalize(),45000,"assembly finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength<=MAX_FINAL&&target.buffer.byteLength>1024,"final memory cap or empty MP4");
+  data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;
+  return new Blob([target.buffer],{type:"video/mp4"});
+ }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel assembly");}catch{}}}
+}
+async function run(){
+ if(active)return;active=true;aborted=false;go.disabled=true;stop.disabled=false;$("save").hidden=true;$("share").hidden=true;
+ if(url){video.removeAttribute("src");video.load();URL.revokeObjectURL(url);url=null;}blob=null;video.hidden=true;
+ const begin=performance.now();
+ const data={version:"V12a",stage:"init",scope:"v12_readonly_remux_audio_presentation_qa",recipe:RECIPE,requested:{width:W,height:H,fps:FPS,frames:N,seconds:D,video:"H.264",audio:"AAC-LC test tone",segments:PARTS,segment_seconds:SEGSEC},status:"RUNNING",media_generated:false,playback:"UNVERIFIED",submitted:0,committed_frames:0,segments:[],old_db_access:false,production_pass:false,gpu_redraw:false,video_reencode:false,checkpoint_write:false,thumbnail_readback:"128x72 stored GPU input and decoded output",planned_cumulative_copy_bytes:0,memory_policy:{max_segment_bytes:MAX_PART,max_final_bytes:MAX_FINAL,gpu_release_each_segment:true,actual_memory_usage:"UNMEASURABLE_IN_SAFARI"}};
+ const guard=()=>{check(!aborted,"stopped by user");check(performance.now()-begin<300000,"5 minute processing limit; resume saved segments");check(!document.hidden,"Safari moved to background");};
+ show(data);progress.value=0;
+ async function work(){
+  guard();const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"Mediabunny");
+  for(const k of ["Output","Mp4OutputFormat","BufferTarget","AudioBufferSource","AudioSampleSink","Input","BlobSource","EncodedVideoPacketSource","EncodedPacketSink","CanvasSink"])check(typeof m[k]==="function","missing "+k);
+  data.stage="checkpoint_scan";const saved=await keys();check(saved.length===PARTS&&saved.every((k,i)=>k===i),"全5区間が必要です。再描画せず停止します。");
+  const verified=[];
+  for(let id=0;id<PARTS;id++){
+   guard();const r=await getPart(id);data.stage="checkpoint_resume";const q=await inspectPart(m,r,id,guard);verified.push(q);data.segments.push({...q.meta,source:"reused_exact_v12"});
+   if(id>0){const left=verified[id-1].frames,right=verified[id].frames,edge=mad(left[SEG-1],right[0]);check(boundaryGate(edge,mad(left[SEG-2],left[SEG-1]),mad(right[0],right[1])),"checkpoint boundary gate at "+id*SEG);}
+   data.committed_frames=(id+1)*SEG;data.submitted=data.committed_frames;progress.value=data.committed_frames;show(data);await refreshSaved();
+   await delay();
+  }
+  guard();data.stage="assemble";$("status").textContent="5区間を再エンコードなしで結合中";show(data);
+  blob=await assemble(m,data,guard,verified);data.media_generated=true;guard();
+  data.stage="verify";data.file=await deadline(probeFile(m,blob,verified,guard),120000,"final MP4 QA");
+  data.technical_pass=evaluate(data.file)&&data.file.visual.pass===true&&data.file.audio.pass===true;check(data.technical_pass,"MP4 QA mismatch: "+JSON.stringify({metadata:evaluate(data.file),video:data.file.visual.pass,audio:data.file.audio.pass,audio_checks:data.file.audio.checks}));
+  url=URL.createObjectURL(blob);video.hidden=false;data.safari_metadata=await metadataCheck();
+  check(data.safari_metadata.width===W&&data.safari_metadata.height===H&&Math.abs(data.safari_metadata.duration-D)<=0.10,"Safari metadata mismatch");
+  data.stage="complete";data.status="PASS_TECHNICAL_PLAYBACK_PENDING";data.playback="USER_CHECK_REQUIRED";
+  $("save").href=url;$("save").hidden=false;$("share").hidden=false;
+  $("status").textContent="30秒MP4検査合格。再生・保存してください。区間データは保持してください。";
+ }
+ try{
+  if(navigator.locks){await navigator.locks.request(DBNAME,{ifAvailable:true},async lock=>{check(lock,"V12 is running in another tab");await work();});}
+  else await work();
+ }catch(e){data.status=aborted?"STOPPED":data.stage==="precompile"?"PRECOMPILE_FAIL":"FAIL";data.error=String(e);if(e.preflight)data.preflight=e.preflight;$("status").textContent=data.status+"｜"+data.error+"｜保存済み区間は保持";}
+ finally{data.elapsed_s=Number(((performance.now()-begin)/1000).toFixed(2));show(data);active=false;go.disabled=false;stop.disabled=true;await refreshSaved();}
+}
+go.onclick=()=>run();
+stop.onclick=()=>{aborted=true;$("status").textContent="停止要求中（保存済み区間は保持）";};
+refreshSaved();
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);$("copy").textContent="コピー済み";}catch{report.focus();report.select();}};
+$("share").onclick=async()=>{try{const file=new File([blob],"suilemo_mobile_v12a_test.mp4",{type:"video/mp4"});if(!navigator.canShare?.({files:[file]}))throw Error("共有非対応：MP4保存を使用");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
+show({version:"V12a",status:"NOT_RUN",media_generated:false});
+</script></body></html>
