@@ -208,6 +208,17 @@ function reduceRGBA(p){
   }a[y*THUMB_W+x]=Math.round(sum/225);
  }return a;
 }
+
+// Narrow alternate QA for the measured, approved F0..6 ease-in only.
+// No exemption from actual decoded freeze, pixel validity, timestamp or jump checks.
+const SLOW_END=6,SLOW_CONTEXT=8,SLOW_SAMPLES=480*270*3;
+function highGrid(rgba){check(rgba.length===FRAME_BYTES,"high-grid RGBA dimensions");const a=new Uint8Array(SLOW_SAMPLES);let k=0;for(let y=0;y<H;y+=4)for(let x=0;x<W;x+=4){const i=(y*W+x)*4;a[k++]=rgba[i];a[k++]=rgba[i+1];a[k++]=rgba[i+2];}return a;}
+function deltaEvidence(a,b,c,d){check([a,b,c,d].every(x=>x instanceof Uint8Array&&x.length===a.length),"delta grid identity");let ab=0,cd=0,aa=0,cc=0,ac=0;for(let k=0;k<a.length;k++){const x=b[k]-a[k],y=d[k]-c[k];ab+=Math.abs(x);cd+=Math.abs(y);aa+=x*x;cc+=y*y;ac+=x*y;}const ratio=ab?cd/ab:null,cosine=aa&&cc?ac/Math.sqrt(aa*cc):null;return {input_mad:ab/a.length,output_mad:cd/a.length,ratio,cosine,pass:ab>0&&cd>0&&ratio>=.5&&ratio<=1.5&&cosine>=.5};}
+function rawSlowGate(rows,id){const low=rows.slice(1).filter(x=>x.adjacent_mad<.1);return rows.length===SEG&&rows.every(x=>x.sd>2)&&new Set(rows.map(x=>x.sha256)).size===SEG&&low.every(x=>id===0&&x.global_frame>=1&&x.global_frame<=SLOW_END&&x.adjacent_mad>0);}
+async function decodeSlow(m,v,first,guard){const sink=new m.CanvasSink(v,{width:W,height:H,fit:"contain"}),samples=[],hashes=[];const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;const ctx=canvas.getContext("2d",{willReadFrequently:true});try{for await(const f of sink.canvases()){guard();const n=samples.length;check(Math.abs(f.timestamp-first-n/FPS)<.002&&f.canvas.width===W&&f.canvas.height===H,"slow full-resolution decoded PTS/size");ctx.drawImage(f.canvas,0,0);const pixels=ctx.getImageData(0,0,W,H).data;hashes.push(await hashBytes(pixels));samples.push(highGrid(pixels));if(n===SLOW_CONTEXT)break;}}finally{canvas.width=canvas.height=1;}check(samples.length===SLOW_CONTEXT+1,"slow decode context count");return {samples,hashes};}
+async function verifySlow(m,v,first,r,guard){check(Array.isArray(r.slow_grid)&&r.slow_grid.length===SLOW_CONTEXT+1&&Array.isArray(r.slow_grid_sha)&&r.slow_grid_sha.length===SLOW_CONTEXT+1&&Array.isArray(r.slow_raw_sha)&&r.slow_raw_sha.length===SLOW_CONTEXT+1&&new Set(r.slow_raw_sha).size===SLOW_CONTEXT+1,"slow raw evidence missing");for(let i=0;i<=SLOW_CONTEXT;i++)check(r.slow_grid[i] instanceof Uint8Array&&r.slow_grid[i].length===SLOW_SAMPLES&&await hashBytes(r.slow_grid[i])===r.slow_grid_sha[i],"slow evidence SHA");const decoded=await decodeSlow(m,v,first,guard);const rows=[];for(let i=1;i<=SLOW_CONTEXT;i++){const e=deltaEvidence(r.slow_grid[i-1],r.slow_grid[i],decoded.samples[i-1],decoded.samples[i]);rows.push({frame:i,...e,decoded_distinct:decoded.hashes[i]!==decoded.hashes[i-1]});}const pass=rows.every(x=>x.pass&&x.decoded_distinct)&&new Set(decoded.hashes).size===SLOW_CONTEXT+1;return {pass,rows,decoded_hashes:decoded.hashes,method:"1080p decoded RGBA SHA + 4px RGB grid temporal delta cosine>=.5 and motion ratio .5–1.5; not exact pixel equality"};}
+function slowAdjustedAssessment(q,slow){if(!slow?.pass)return q;const adjust=m=>({...m,low_mad_frames:m.static_frames,static_frames:m.static_frames,edge_static_frames:m.edge_static_frames});const inp=adjust(q.input_motion),out=adjust(q.output_motion);const low=(key)=>q.frames.slice(1).filter(x=>x[key]<.1).map(x=>x.frame),il=low("input_adjacent_mad"),ol=low("output_adjacent_mad");const within=x=>x>=1&&x<=SLOW_END;const normalize=(m,ls)=>({...m,confirmed_slow_frames:ls.filter(within),static_frames:ls.filter(x=>!within(x)).length,edge_static_frames:ls.filter(x=>!within(x)&&[1,2,3,4,176,177,178,179].includes(x)).length,pass:m.interior_median>.1&&ls.every(within)&&m.edge_jump_frames.length===0});const a=normalize(inp,il),b=normalize(out,ol);const ratios=q.ratio_failures.filter(i=>i<1||i>SLOW_CONTEXT),align=q.alignment_failures.filter(i=>{const f=q.frames[i];return i>SLOW_CONTEXT||f.same_timestamp_mad>8||f.sd_output<=2||f.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<f.same_timestamp_mad);});return {...q,input_motion:a,output_motion:b,ratio_failures:ratios,alignment_failures:align,status:a.pass&&b.pass&&!ratios.length&&!align.length?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",slow_motion_qa:slow};}
+
 function summarizeMotion(d){
  check(d.length===SEG&&d[0]===null&&d.slice(1).every(Number.isFinite),"invalid motion series");
  const inside=d.slice(5,176).sort((a,b)=>a-b),med=inside[Math.floor(inside.length/2)],p95=inside[Math.floor(inside.length*.95)];
@@ -328,13 +339,15 @@ async function inspectPart(m,r,id,guard){
    if(n)diffs.push(mad(frames[n-1],x));frames.push(x);
   }
   check(frames.length===SEG,"segment decoded count");
-  const motion=summarizeMotion(diffs);check(motion.pass&&motion.static_frames===0,"segment motion gate "+id);
+  const motion=summarizeMotion(diffs);let slow=null;
+  if(id===0){slow=await verifySlow(m,v,first,r,guard);check(slow.pass,"slow-motion decoded evidence FAIL "+JSON.stringify(slow));}
+  else check(motion.pass&&motion.static_frames===0,"segment motion gate "+id);
   const jumps=diffs.flatMap((x,k)=>k>1&&k<SEG-1&&!jumpGate(x,[diffs[k-1],diffs[k+1]])?[k]:[]);check(!jumps.length,"segment internal jump");
   let assessment;
   check(r.imported!==true,"foreign scene import prohibited");
   {
    check(Array.isArray(r.raw)&&r.raw.length===SEG,"missing raw QA thumbnails");
-   const q=assess(r.raw,frames);check(q.status==="TECHNICAL_CANDIDATE","input/output segment QA "+id+" "+JSON.stringify(compactAssessment(q)));assessment=compactAssessment(q);
+   const base=assess(r.raw,frames),q=id===0?slowAdjustedAssessment(base,slow):base;check(q.status==="TECHNICAL_CANDIDATE","input/output segment QA "+id+" "+JSON.stringify(compactAssessment(q)));assessment={...compactAssessment(q),...(slow?{slow_motion_qa:slow}:{})};
   }
   return {frames,hashes,meta:{id,frames:SEG,bytes:r.bytes,sha256:r.sha256,config_signature:sig,visual:assessment}};
  }finally{input.dispose();}
@@ -354,6 +367,7 @@ async function muxPart(m,r,id,expected,guard,consume){
 async function persist(rec,q){
  rec.packet_hashes=q.hashes;await putPart(rec);const r=await getPart(rec.id);
  check(validRecord(r,rec.id)&&await sha256(r.blob)===rec.sha256&&JSON.stringify(r.packet_hashes)===JSON.stringify(q.hashes),"checkpoint readback mismatch");
+ if(rec.id===0){check(r.slow_grid.length===SLOW_CONTEXT+1&&JSON.stringify(r.slow_grid_sha)===JSON.stringify(rec.slow_grid_sha)&&JSON.stringify(r.slow_raw_sha)===JSON.stringify(rec.slow_raw_sha),"slow checkpoint metadata");for(let i=0;i<=SLOW_CONTEXT;i++)check(await hashBytes(r.slow_grid[i])===rec.slow_grid_sha[i],"slow checkpoint bytes");}
 }
 function directCaptureAdapter(ctx){const {T,renderer,device,post,pose,camera,focusDepth}=ctx;return {async diagnose(guard,data,consume,id){
     const prior=renderer.getRenderTarget(),bytes=W*H*4;
@@ -414,7 +428,7 @@ async function diagnoseFirst(){
 
 async function renderPart(m,id,data,guard){
  generationGate();
- let gpu=null,output=null,finalized=false;const enc=[],raw=[];const began=performance.now();
+ let gpu=null,output=null,finalized=false;const enc=[],raw=[],slowGrid=[],slowGridSHA=[],slowRawSHA=[];const began=performance.now();
  const tmp={gpu:{}};
  try{
   guard();data.stage="gpu_init";gpu=await gpuSetup();data.backend=gpu.backend;data.effects=gpu.effects;
@@ -428,16 +442,17 @@ async function renderPart(m,id,data,guard){
   data.stage="direct_render";
   const metrics=await gpu.diagnose(guard,tmp,async(pixels,small,j,hash)=>{
    guard();check(j===raw.length&&pixels.length===FRAME_BYTES,"input order or size");
+   if(id===0&&j<=SLOW_CONTEXT){const a=highGrid(pixels);slowGrid.push(a);slowGridSHA.push(await hashBytes(a));slowRawSHA.push(hash);}
    const t=performance.now(),sample=new m.VideoSample(pixels,{format:"RGBA",codedWidth:W,codedHeight:H,timestamp:j/FPS,duration:1/FPS});
    try{await deadline(vs.add(sample,j===0?{keyFrame:true}:undefined),20000,"direct encode");raw.push(small);}finally{sample.close();}
    enc.push(performance.now()-t);data.submitted=id*SEG+j+1;progress.value=data.submitted;
   },id);
   if(metrics.status!=="NORMAL"){const r=metrics.frames;data.motion_failure={segment:id,sd_fail_frames:r.filter(x=>x.sd<=2).map(x=>x.global_frame),low_mad_frames:r.slice(1).filter(x=>x.adjacent_mad<.1).map(x=>x.global_frame),distinct_hashes:new Set(r.map(x=>x.sha256)).size,identical_rgba_frames:r.slice(1).filter((x,i)=>x.sha256===r[i].sha256).map(x=>x.global_frame),min_sd:Math.min(...r.map(x=>x.sd)),min_mad:Math.min(...r.slice(1).map(x=>x.adjacent_mad)),max_mad:Math.max(...r.slice(1).map(x=>x.adjacent_mad)),first_frames:r.slice(0,12)};}
-  check(metrics.status==="NORMAL"&&raw.length===SEG,"GPU motion gate");
+  check(raw.length===SEG&&rawSlowGate(metrics.frames,id),"GPU motion gate");
   gpu.destroy();gpu=null;guard();data.stage="segment_finalize";await deadline(output.finalize(),30000,"segment finalize");finalized=true;
   check(target.buffer&&target.buffer.byteLength>1024&&target.buffer.byteLength<=MAX_PART,"segment memory cap");
   const part=new Blob([target.buffer],{type:"video/mp4"});
-  const rec={id,recipe:RECIPE,identity:IDENTITY,start:id*SEG,count:SEG,blob:part,bytes:part.size,sha256:await sha256(part),render_timing:metrics.render_timing,readback_timing:metrics.readback_timing,encode_timing:summary(enc),elapsed_s:round((performance.now()-began)/1000),raw};
+  const rec={id,recipe:RECIPE,identity:IDENTITY,start:id*SEG,count:SEG,blob:part,bytes:part.size,sha256:await sha256(part),render_timing:metrics.render_timing,readback_timing:metrics.readback_timing,encode_timing:summary(enc),elapsed_s:round((performance.now()-began)/1000),raw,slow_grid:slowGrid,slow_grid_sha:slowGridSHA,slow_raw_sha:slowRawSHA};
   data.stage="checkpoint_verify";const q=await inspectPart(m,rec,id,guard);guard();data.stage="checkpoint_commit";await persist(rec,q);
   return {q,record:{...q.meta,render_timing:rec.render_timing,readback_timing:rec.readback_timing,encode_timing:rec.encode_timing,elapsed_s:rec.elapsed_s,source:"new",persisted_readback:true}};
  }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel segment");}catch{}}if(gpu)gpu.destroy();}
@@ -496,7 +511,7 @@ async function probeFile(m,b,verified,guard){
   }
   check(n===N,"final decoded count");
   const boundaries=[];for(let id=1;id<PARTS;id++){const k=id*SEG;boundaries.push({frame:k,mad:round(changes[k]),left:round(changes[k-1]),right:round(changes[k+1]),pass:boundaryGate(changes[k],changes[k-1],changes[k+1])});}
-  const statics=changes.slice(1).filter(x=>x<.1).length;
+  const lowFrames=changes.flatMap((x,i)=>i>0&&x<.1?[i]:[]);const slow=verified[0].meta.visual.slow_motion_qa;check(slow?.pass,"missing first-section evidence");const finalSlow=await decodeSlow(m,v,first,guard);check(finalSlow.hashes.every((x,i)=>x===slow.decoded_hashes[i]),"final slow-motion decoded SHA mismatch");const statics=lowFrames.filter(i=>i>SLOW_END).length;
   const jumps=changes.flatMap((x,k)=>k>1&&k<N-1&&!jumpGate(x,[changes[k-1],changes[k+1]])?[k]:[]);
   let audioPackets=0,apFirst=null,apEnd=null,maxPacketGap=0;
   for await(const p of new m.EncodedPacketSink(a).packets()){
@@ -517,7 +532,7 @@ async function probeFile(m,b,verified,guard){
   const wave=assessAudio(meter);
   const checks={format:audioPackets>0&&samples>0&&rate===SR&&channels===2,raw_continuity:maxPacketGap<=.002&&maxGap<=.002,edit_presentation:presentationCheck(edit,apFirst,apEnd,aFirst,aEnd),pcm_coverage:wave.coverage_pass,real_pcm_alignment:wave.pass};
   const audioPass=Object.values(checks).every(Boolean);
-  return {visual:{pass:statics===0&&jumps.length===0&&boundaries.every(x=>x.pass),decoded_frames:n,static_frames:statics,jump_frames:jumps,boundaries,max_segment_to_final_mad:round(Math.max(...diffs)),packet_hashes_verified:packets},audio:{pass:audioPass,packets:audioPackets,decoded_samples:samples,sample_rate:rate,channels,first_timestamp:aFirst,end_timestamp:aEnd,packet_first_timestamp:apFirst,packet_end_timestamp:apEnd,max_packet_gap_s:maxPacketGap,max_decoded_gap_s:maxGap,edit_list:edit,presentation_start_s:checks.edit_presentation?0:null,waveform:wave,checks},packets,audio_packets:audioPackets,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:packets/vd,mime,video_codec:vc,audio_codec:ac,avc:vc==="avc",aac:ac==="aac",bytes:b.size,sha256:await sha256(b)};
+  return {visual:{pass:statics===0&&jumps.length===0&&boundaries.every(x=>x.pass),decoded_frames:n,static_frames:statics,thumbnail_low_mad_frames:lowFrames,slow_motion_verified_frames:lowFrames.filter(i=>i<=SLOW_END),slow_decoded_hashes_verified:finalSlow.hashes.length,jump_frames:jumps,boundaries,max_segment_to_final_mad:round(Math.max(...diffs)),packet_hashes_verified:packets},audio:{pass:audioPass,packets:audioPackets,decoded_samples:samples,sample_rate:rate,channels,first_timestamp:aFirst,end_timestamp:aEnd,packet_first_timestamp:apFirst,packet_end_timestamp:apEnd,max_packet_gap_s:maxPacketGap,max_decoded_gap_s:maxGap,edit_list:edit,presentation_start_s:checks.edit_presentation?0:null,waveform:wave,checks},packets,audio_packets:audioPackets,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:packets/vd,mime,video_codec:vc,audio_codec:ac,avc:vc==="avc",aac:ac==="aac",bytes:b.size,sha256:await sha256(b)};
  }finally{input.dispose();}
 }
 
