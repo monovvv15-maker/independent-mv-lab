@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V05</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style></head><body><main><h1>iPhone独立MV制作 V05</h1><p>6秒・1080p・30fps・180フレーム。WebGPUで3D球体と床を計算し、H.264/AAC MP4を端末内で作ります。実曲・原本・外部GPUは使用しません。</p><section><h2>実映像試験</h2><p>Safariを前面にしたまま実行してください。発熱したら停止。自動再試行なし、上限5分。音声は小音量の短いテスト音です。</p><button id="go">動画生成開始（6秒）</button><button id="stop" class="secondary" disabled>停止</button><progress id="progress" max="180" value="0"></progress><p id="status" role="status">未実行</p><video id="preview" controls playsinline preload="metadata" hidden></video><a id="save" class="save" download="suilemo_mobile_v05_test.mp4" hidden>MP4を保存</a><button id="share" class="secondary" hidden>共有・ファイルに保存</button></section><section><h2>検査結果</h2><button id="copy" class="secondary">結果をコピー</button><textarea id="report" readonly aria-label="検査結果"></textarea><small>ライブラリ取得のみCDNに接続します。制作素材や結果を送信しません。再生・聴感・実機安定性は目視確認が必要です。</small></section><p><a href="../">V04 接続診断へ戻る</a></p></main><script>
+"use strict";
+const W=1920,H=1080,FPS=30,N=180,D=6,SR=48000,ROW=W*4;
+const $=id=>document.getElementById(id);
+const go=$("go"),stop=$("stop"),report=$("report"),video=$("preview"),progress=$("progress");
+let active=false,aborted=false,blob=null,url=null;
+const shader="\nstruct Params { time:f32, w:f32, h:f32, pad:f32 };\n@group(0) @binding(0) var<uniform> p:Params;\n@group(0) @binding(1) var outTex:texture_storage_2d<rgba8unorm,write>;\nconst C0:vec3f=vec3f(-1.12,0.64,0.0);\nconst C1:vec3f=vec3f(0.0,0.88,0.0);\nconst C2:vec3f=vec3f(1.20,0.60,0.12);\nfn hitSphere(ro:vec3f, rd:vec3f, c:vec3f, r:f32)->f32{\n  let oc=ro-c; let b=dot(oc,rd); let d=b*b-dot(oc,oc)+r*r;\n  if(d<0.0){return 1e6;} let h=-b-sqrt(d); if(h>0.001){return h;} return 1e6;\n}\nfn env(rd:vec3f)->vec3f{\n  let t=clamp(rd.y*0.8+0.35,0.0,1.0);\n  return mix(vec3f(0.035,0.048,0.075),vec3f(0.19,0.29,0.45),t);\n}\n@compute @workgroup_size(8,8)\nfn main(@builtin(global_invocation_id) id:vec3u){\n  if(id.x>=u32(p.w)||id.y>=u32(p.h)){return;}\n  let uv=(vec2f(f32(id.x)+0.5,f32(id.y)+0.5)-vec2f(p.w,p.h)*0.5)/p.h;\n  let a=-0.50+1.00*p.time/6.0;\n  let ro=vec3f(4.9*sin(a),2.15,4.9*cos(a));\n  let forward=normalize(vec3f(0.0,0.75,0.0)-ro);\n  let right=normalize(cross(forward,vec3f(0.0,1.0,0.0)));\n  let up=cross(right,forward);\n  let rd=normalize(forward+uv.x*right-uv.y*up);\n  var dist=1e6; var which=0u; var center=vec3f(0.0); var base=vec3f(0.0);\n  if(rd.y< -0.0001){let floorT=-ro.y/rd.y;if(floorT>0.0){dist=floorT;which=1u;}}\n  let t0=hitSphere(ro,rd,C0,0.64); if(t0<dist){dist=t0;which=2u;center=C0;base=vec3f(0.08,0.68,0.33);}\n  let t1=hitSphere(ro,rd,C1,0.88); if(t1<dist){dist=t1;which=2u;center=C1;base=vec3f(0.92,0.66,0.05);}\n  let t2=hitSphere(ro,rd,C2,0.60); if(t2<dist){dist=t2;which=2u;center=C2;base=vec3f(0.82,0.13,0.38);}\n  var col=env(rd);\n  if(which!=0u){\n    let pos=ro+rd*dist;\n    var n=vec3f(0.0,1.0,0.0);\n    if(which==2u){n=normalize(pos-center);}\n    let lvec=vec3f(-3.0,6.0,3.0)-pos;\n    let light=normalize(lvec);\n    let ndl=max(dot(n,light),0.0);\n    let shadowOrigin=pos+n*0.003;\n    let sh=min(hitSphere(shadowOrigin,light,C0,0.64),min(hitSphere(shadowOrigin,light,C1,0.88),hitSphere(shadowOrigin,light,C2,0.60)));\n    let visibility=select(1.0,0.19,sh<length(lvec));\n    if(which==1u){\n      let grid=abs(fract(pos.xz*0.6+vec2f(0.5))-vec2f(0.5));\n      let line=1.0-smoothstep(0.008,0.020,min(grid.x,grid.y));\n      base=mix(vec3f(0.055,0.071,0.095),vec3f(0.11,0.17,0.23),line*0.6);\n      col=base*(0.40+0.85*ndl*visibility);\n      col=mix(col,env(rd),smoothstep(6.0,20.0,dist));\n    }else{\n      let h=normalize(light-rd);\n      let spec=pow(max(dot(n,h),0.0),80.0)*visibility;\n      let fres=pow(1.0-max(dot(n,-rd),0.0),4.0);\n      col=base*(0.24+0.72*ndl*visibility)+vec3f(0.8)*spec+env(reflect(rd,n))*0.40+vec3f(0.23,0.33,0.48)*fres;\n    }\n  }\n  col=pow(clamp(col,vec3f(0.0),vec3f(1.0)),vec3f(1.0/2.2));\n  textureStore(outTex,vec2i(id.xy),vec4f(col,1.0));\n}";
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{let timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function evaluate(m){return m.packets===N&&m.audio_packets>0&&m.width===W&&m.height===H&&Math.abs(m.duration-D)<=0.10&&Math.abs(m.video_duration-D)<=0.05&&Math.abs(m.audio_duration-D)<=0.10&&m.avc&&m.aac&&m.bytes>1024;}
+async function gpuSetup(){
+ check(window.isSecureContext&&navigator.gpu,"WebGPU unavailable");
+ const adapter=await deadline(navigator.gpu.requestAdapter({powerPreference:"high-performance"}),12000,"GPU adapter");
+ check(adapter&&!adapter.info?.isFallbackAdapter,"GPU adapter unavailable");
+ const device=await deadline(adapter.requestDevice(),12000,"GPU device");
+ try{
+  const uniform=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  const texture=device.createTexture({size:[W,H],format:"rgba8unorm",usage:GPUTextureUsage.STORAGE_BINDING|GPUTextureUsage.COPY_SRC});
+  const readback=device.createBuffer({size:ROW*H,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+  const module=device.createShaderModule({code:shader});
+  const info=await module.getCompilationInfo();const errors=info.messages.filter(m=>m.type==="error");
+  check(!errors.length,errors.map(e=>e.message).join("; "));
+  const pipeline=await device.createComputePipelineAsync({layout:"auto",compute:{module,entryPoint:"main"}});
+  const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:uniform}},{binding:1,resource:texture.createView()}]});
+  let lost=false;device.lost.then(()=>{lost=true});
+  return {device,async frame(index,ctx){
+   check(!lost,"GPU device lost");
+   device.queue.writeBuffer(uniform,0,new Float32Array([index/FPS,W,H,0]));
+   const encoder=device.createCommandEncoder();const pass=encoder.beginComputePass();
+   pass.setPipeline(pipeline);pass.setBindGroup(0,group);pass.dispatchWorkgroups(Math.ceil(W/8),Math.ceil(H/8));pass.end();
+   encoder.copyTextureToBuffer({texture},{buffer:readback,bytesPerRow:ROW,rowsPerImage:H},[W,H,1]);
+   device.queue.submit([encoder.finish()]);
+   await deadline(readback.mapAsync(GPUMapMode.READ),20000,"GPU readback");
+   try{const pixels=new Uint8ClampedArray(readback.getMappedRange()).slice();ctx.putImageData(new ImageData(pixels,W,H),0,0);}finally{readback.unmap();}
+  },destroy(){device.destroy();}};
+ }catch(e){device.destroy();throw e;}
+}
+function audioBuffer(sec){
+ const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});
+ for(let ch=0;ch<2;ch++){const x=b.getChannelData(ch);for(let i=0;i<SR;i++){const t=i/SR;const env=Math.max(0,Math.min(1,t/0.015,(0.18-t)/0.04));x[i]=0.065*env*Math.sin(2*Math.PI*(sec%2?660:440)*t);}}
+ return b;
+}
+async function probeFile(m,b){
+ const input=new m.Input({source:new m.BlobSource(b),formats:m.ALL_FORMATS});
+ try{
+ const v=await input.getPrimaryVideoTrack(),a=await input.getPrimaryAudioTrack();check(v&&a,"missing video/audio track");
+ const [vs,as,du,vd,ad,mime]=await Promise.all([v.computePacketStats(),a.computePacketStats(),input.computeDuration(),v.computeDuration(),a.computeDuration(),input.getMimeType()]);
+ const width=typeof v.getDisplayWidth==="function"?await v.getDisplayWidth():v.displayWidth;
+ const height=typeof v.getDisplayHeight==="function"?await v.getDisplayHeight():v.displayHeight;
+ const vc=typeof v.getCodec==="function"?await v.getCodec():v.codec;
+ const ac=typeof a.getCodec==="function"?await a.getCodec():a.codec;
+ const sha=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+ return {packets:vs.packetCount,audio_packets:as.packetCount,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:vs.averagePacketRate,mime,video_codec:vc??null,audio_codec:ac??null,avc:vc==="avc"||/avc[13]/i.test(mime),aac:ac==="aac"||/mp4a/i.test(mime),bytes:b.size,sha256:sha};
+ }finally{input.dispose();}
+}
+function metadataCheck(){
+ return deadline(new Promise((res,rej)=>{
+ const ready=()=>res({width:video.videoWidth,height:video.videoHeight,duration:video.duration});
+ video.addEventListener("loadedmetadata",ready,{once:true});
+ video.addEventListener("error",()=>rej(Error("Safari MP4 metadata read failed")),{once:true});
+ video.src=url;video.load();
+ if(video.readyState>=1)ready();
+ }),15000,"Safari MP4 metadata");
+}
+function show(data){report.value=JSON.stringify(data,null,2);}
+async function run(){
+ if(active)return;active=true;aborted=false;go.disabled=true;stop.disabled=false;$("save").hidden=true;$("share").hidden=true;
+ if(url){video.removeAttribute("src");video.load();URL.revokeObjectURL(url);url=null;}blob=null;video.hidden=true;
+ const begin=performance.now();let gpu=null,output=null,submitted=0,finalized=false,encoded=0,audioPackets=0;
+ const data={version:"V05",scope:"synthetic_3d_trial",requested:{width:W,height:H,fps:FPS,frames:N,seconds:D,video:"H.264",audio:"AAC-LC test tone"},status:"RUNNING",media_generated:false,playback:"UNVERIFIED",submitted:0};
+ show(data);progress.value=0;
+ const guard=()=>{check(!aborted,"stopped by user");check(performance.now()-begin<300000,"5 minute processing limit");check(!document.hidden,"Safari moved to background");};
+ try{
+  $("status").textContent="ライブラリ取得・GPU準備中";
+  const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"Mediabunny");
+  for(const k of ["Output","Mp4OutputFormat","BufferTarget","CanvasSource","AudioBufferSource","Input","BlobSource"])check(typeof m[k]==="function","missing "+k);
+  guard();gpu=await gpuSetup();guard();
+  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext("2d",{alpha:false});check(ctx,"2D transfer canvas unavailable");
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.CanvasSource(canvas,{codec:"avc",fullCodecString:"avc1.640028",bitrate:8000000,keyFrameInterval:1,latencyMode:"quality",onEncodedPacket:()=>{encoded++;}});
+  const as=new m.AudioBufferSource({codec:"aac",bitrate:192000,onEncodedPacket:()=>{audioPackets++;}});
+  output.addVideoTrack(vs,{frameRate:FPS});output.addAudioTrack(as);
+  await deadline(output.start(),20000,"MP4 start");
+  for(let i=0;i<N;i++){
+   guard();if(i%FPS===0)await deadline(as.add(audioBuffer(i/FPS)),20000,"audio add");
+   await gpu.frame(i,ctx);guard();
+   await deadline(vs.add(i/FPS,1/FPS),20000,"video encode");
+   submitted=i+1;progress.value=submitted;
+   $("status").textContent=submitted+" / "+N+" フレーム｜"+((performance.now()-begin)/1000).toFixed(1)+" 秒";
+   data.submitted=submitted;data.encoded_callbacks=encoded;
+   if(i%10===0){show(data);await delay();}
+  }
+  guard();$("status").textContent="MP4確定・ファイル検査中";
+  await deadline(output.finalize(),30000,"MP4 finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength>0,"empty MP4");
+  blob=new Blob([target.buffer],{type:"video/mp4"});data.media_generated=true;
+  data.file=await deadline(probeFile(m,blob),30000,"MP4 verification");
+  data.technical_pass=evaluate(data.file);
+  data.encoded_callbacks=encoded;data.audio_callbacks=audioPackets;
+  check(data.technical_pass,"MP4 technical QA mismatch");
+  url=URL.createObjectURL(blob);video.hidden=false;
+  data.safari_metadata=await metadataCheck();
+  check(data.safari_metadata.width===W&&data.safari_metadata.height===H&&Math.abs(data.safari_metadata.duration-D)<=0.10,"Safari metadata mismatch");
+  data.status="PASS_TECHNICAL_PLAYBACK_PENDING";data.playback="USER_CHECK_REQUIRED";
+  $("save").href=url;$("save").hidden=false;$("share").hidden=false;
+  $("status").textContent="MP4検査合格。再生ボタンで映像とテスト音を確認してください。";
+ }catch(e){data.status=aborted?"STOPPED":"FAIL";data.error=String(e);$("status").textContent=data.status+"｜"+data.error;if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel")}catch{}}}
+ finally{if(gpu)gpu.destroy();data.submitted=submitted;data.elapsed_s=Number(((performance.now()-begin)/1000).toFixed(2));show(data);active=false;go.disabled=false;stop.disabled=true;}
+}
+go.onclick=run;stop.onclick=()=>{aborted=true;$("status").textContent="停止要求中";};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);$("copy").textContent="コピー済み";}catch{report.focus();report.select();}};
+$("share").onclick=async()=>{try{const file=new File([blob],"suilemo_mobile_v05_test.mp4",{type:"video/mp4"});if(!navigator.canShare?.({files:[file]}))throw Error("共有非対応：MP4保存を使用");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
+show({version:"V05",status:"NOT_RUN",media_generated:false});
+</script></body></html>
