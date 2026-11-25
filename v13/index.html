@@ -1,18 +1,20 @@
 <!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; img-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V13 準備</title><style>
 :root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
-</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>動画生成禁止。V04美術実体の照合・シーン接続は未完了。現段階では描画やエンコードを開始できません。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">保存領域は作成しません</p><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>動画生成禁止。V04参照から3Dシーンを接続済み。プリフライトは描画・エンコード・DB書込みを行いません。実機の映像品質は未確認です。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="go" disabled>動画生成開始（承認待ち・無効）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
 const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,FRAME_BYTES=W*H*4,THUMB_W=128,THUMB_H=72;
 const $=id=>document.getElementById(id);
-const progress=$("progress"),report=$("report");
+const progress=$("progress"),report=$("report"),go=$("go"),stop=$("stop"),video=$("preview");
+let aborted=false,blob=null,url=null,preflightOK=false;
 const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function evaluate(m){return m.packets===N&&m.audio_packets>0&&m.width===W&&m.height===H&&Math.abs(m.duration-D)<=.10&&Math.abs(m.video_duration-D)<=.05&&Math.abs(m.audio_duration-D)<=.10&&m.avc&&m.aac&&m.bytes>1024;}
 const delay=()=>new Promise(r=>setTimeout(r,0));
 const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
 function show(data){report.value=JSON.stringify(data,null,2);}
 
 const SOURCE_SHA="041eeecd59f2bbe8804e437a43bb41149abc3b2bb3b1c4c305745dad3d8c7b47",PCM_SHA="ab2a53e64226f541446c389595d893aa51f7cdc8257be8fd98355415e36104b7",REF_SHA="4366851d0e115206510343674ad913fc3ae2b2517c40d3f34b96fb98eed5a7b7",ZIP_SHA="ab8d37e939484f800744772acf9cace105a5c90c4987db6512facc8df0366273",DESIGN="V13-30s-V01";
-const DBNAME="suilemo-v13-real-music-30s-v1",RECIPE="v13-30s-v01-preflight",IDENTITY=[DESIGN,SOURCE_SHA,REF_SHA,ZIP_SHA].join(":");
-const GENERATION_ALLOWED=false,SCENE_READY=false;
+const DBNAME="suilemo-v13-real-music-30s-v1",RECIPE="v13-30s-v01-art-adapter",IDENTITY=[DESIGN,SOURCE_SHA,REF_SHA,ZIP_SHA].join(":");
+const GENERATION_ALLOWED=false,SCENE_READY=true;
 let sourcePCM=null,envelope=null,active=false;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 function hermite(x,a,b,p,q,v,w){const d=(b-a)/FPS,z=clamp((x-a)/(b-a),0,1),z2=z*z,z3=z2*z;return (2*z3-3*z2+1)*p+(z3-2*z2+z)*d*v+(-2*z3+3*z2)*q+(z3-z2)*d*w;}
@@ -35,13 +37,155 @@ function parseWav(bytes,expectedFrames=11982720){const d=new DataView(bytes),fou
  check(fmt&&data&&fmt.format===1&&fmt.channels===2&&fmt.rate===SR&&fmt.byteRate===SR*4&&fmt.align===4&&fmt.bits===16&&data.size===expectedFrames*4,"WAV PCM format/count");return {...fmt,frames:data.size/4,offset:data.start};
 }
 function slicePCM(bytes,meta,start,count){check(start>=0&&count>0&&start+count<=meta.frames,"PCM slice bounds");const d=new DataView(bytes,meta.offset+start*4,count*4),a=[new Float32Array(count),new Float32Array(count)];for(let k=0;k<count;k++)for(let c=0;c<2;c++)a[c][k]=d.getInt16(4*k+2*c,true)/32768;return a;}
-async function readSource(file){check(file&&file.size===47944708,"source WAV size");const bytes=await file.arrayBuffer();check(await hashBytes(bytes)===SOURCE_SHA,"source WAV SHA mismatch");const meta=parseWav(bytes);check(await hashBytes(new Uint8Array(bytes,meta.offset+2304000*4,1440000*4))===PCM_SHA,"slice PCM SHA mismatch");sourcePCM=slicePCM(bytes,meta,2304000,1440000);envelope=makeEnvelope(sourcePCM);return {source_sha:SOURCE_SHA,pcm_sha:PCM_SHA,frames:1440000,rate:SR,channels:2,source_frames:meta.frames,data_offset:meta.offset};}
+async function readSource(file){sourcePCM=null;envelope=null;check(file&&file.size===47944708,"source WAV size");const bytes=await file.arrayBuffer();check(await hashBytes(bytes)===SOURCE_SHA,"source WAV SHA mismatch");const meta=parseWav(bytes);check(await hashBytes(new Uint8Array(bytes,meta.offset+2304000*4,1440000*4))===PCM_SHA,"slice PCM SHA mismatch");sourcePCM=slicePCM(bytes,meta,2304000,1440000);envelope=makeEnvelope(sourcePCM);return {source_sha:SOURCE_SHA,pcm_sha:PCM_SHA,frames:1440000,rate:SR,channels:2,source_frames:meta.frames,data_offset:meta.offset};}
 function makeEnvelope(p){const n=p[0].length/480;check(Number.isInteger(n),"10ms PCM grid");const a=new Float32Array(n);let q=0;for(let j=0;j<n;j++){let sum=0;for(let k=j*480;k<(j+1)*480;k++)sum+=p[0][k]**2+p[1][k]**2;const db=10*Math.log10(Math.max(sum/960,1e-12)),v=clamp((db+35)/21,0,1),alpha=1-Math.exp(-.01/(v>q?.05:.12));q+=alpha*(v-q);a[j]=q;}return a;}
 function audioBuffer(sec){check(sourcePCM&&Number.isInteger(sec)&&sec>=0&&sec<D,"real PCM not loaded");const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});for(let ch=0;ch<2;ch++)b.copyToChannel(sourcePCM[ch].subarray(sec*SR,(sec+1)*SR),ch);return b;}
-function soundAt(f){check(envelope,"audio envelope unavailable");const pos=f*100/FPS,j=Math.floor(pos),a=envelope[Math.min(j,envelope.length-1)],b=envelope[Math.min(j+1,envelope.length-1)],v=a+(b-a)*(pos-j);if(f<598)return {thickness:1,light:f>=493?.7:1};return {thickness:1+.25*v,light:.7+.5*v};}
+function smooth01(x){x=clamp(x,0,1);return x*x*(3-2*x);}
+function soundCurve(f,e){const pos=f*100/FPS,j=Math.floor(pos),a=e[Math.min(j,e.length-1)],b=e[Math.min(j+1,e.length-1)],v=a+(b-a)*(pos-j);const accent=.12*Math.exp(-.5*((f-469)/4)**2),quiet=1-.30*smooth01((f-493)/18),mix=smooth01((f-598)/12);return {thickness:1+.25*v*mix,light:quiet*(1-mix)+(.7+.5*v)*mix+accent};}
+function soundAt(f){check(envelope,"audio envelope unavailable");return soundCurve(f,envelope);}
 function storageGate(e){const need=120*1024*1024+48*1024*1024;return {required_bytes:need,available_bytes:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)?Math.max(0,e.quota-e.usage):null,pass:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)&&e.quota-e.usage>=need,physical_ram:"UNVERIFIED"};}
 function generationGate(){check(GENERATION_ALLOWED&&SCENE_READY,"V13 generation disabled; verified art adapter and separate approval required");}
-async function gpuSetup(){generationGate();throw Error("V04 scene adapter not implemented: asset bytes unavailable");}
+
+const WORLD_Y=2.6;
+function strokePoly(x1,y1,x2,y2,w){const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);check(len>0,"zero glyph stroke");const nx=-dy*w/(2*len),ny=dx*w/(2*len);return [[x1+nx,y1+ny],[x2+nx,y2+ny],[x2-nx,y2-ny],[x1-nx,y1-ny]];}
+const poly=(...xy)=>xy;
+function arcPoly(cx,cy,rx,ry,wx,wy,start,end,n=48){const a=[],b=[];for(let i=0;i<=n;i++){const t=start+(end-start)*i/n;a.push([cx+rx*Math.cos(t),cy+ry*Math.sin(t)]);b.push([cx+(rx-wx)*Math.cos(t),cy+(ry-wy)*Math.sin(t)]);}return a.concat(b.reverse());}
+function glyphPolys(ch){const l=strokePoly,rect=(x,y,w,h)=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+ if(ch==="K")return [l(.06,0,.06,1,.042),l(.08,.49,.65,1,.042),l(.08,.49,.66,0,.042)];
+ if(ch==="O")return [arcPoly(.49,.5,.49,.5,.035,.035,0,2*Math.PI-.00001,96)];
+ if(ch==="N")return [l(.055,0,.055,1,.042),l(.055,1,.72,0,.042),l(.72,0,.72,1,.042)];
+ if(ch==="C")return [arcPoly(.48,.5,.48,.5,.14,.095,.24*Math.PI,1.76*Math.PI,80),poly([.78,.8],[.91,.92],[.94,.75]),poly([.78,.2],[.91,.08],[.94,.25])];
+ if(ch==="R")return [rect(.085,0,.14,1),rect(0,.96,.32,.04),rect(0,0,.32,.04),arcPoly(.25,.74,.48,.26,.13,.07,-Math.PI/2,Math.PI/2,48),l(.24,.49,.72,.035,.15),rect(.58,0,.22,.04)];
+ if(ch==="Y")return [l(.1,1,.45,.49,.12),l(.8,1,.45,.49,.075),rect(.38,0,.14,.53),rect(.25,0,.40,.04),rect(0,.96,.27,.04),rect(.64,.96,.25,.04)];
+ if(ch===".")return [Array.from({length:32},(_,i)=>[.10+.09*Math.cos(i*2*Math.PI/32),.10+.09*Math.sin(i*2*Math.PI/32)])];
+ if(ch==="イ")return [l(.08,.48,.85,.97,.105),l(.48,.75,.48,.04,.105)];
+ if(ch==="カ")return [l(.10,.73,.88,.73,.105),l(.88,.73,.79,.13,.105),l(.79,.13,.64,.05,.105),l(.53,.96,.44,.47,.105),l(.44,.47,.14,.05,.105)];
+ if(ch==="リ")return [l(.17,.95,.17,.43,.105),l(.75,.95,.75,.46,.105),l(.75,.46,.60,.20,.105),l(.60,.20,.35,.03,.105)];
+ throw Error("unsupported glyph "+ch);}
+function shapeFrom(T,points){const s=new T.Shape();s.moveTo(...points[0]);for(const p of points.slice(1))s.lineTo(...p);s.closePath();return s;}
+function makeWord(T,word,depth,mat){const group=new T.Group();let offset=0;for(const ch of word){const polys=glyphPolys(ch),xs=polys.flat().map(p=>p[0]),lo=Math.min(...xs),hi=Math.max(...xs);for(const points of polys){const q=points.map(([x,y])=>[x-lo+offset,y]);const shape=shapeFrom(T,q),geo=depth>0?new T.ExtrudeGeometry(shape,{depth,bevelEnabled:false,curveSegments:12}):new T.ShapeGeometry(shape);if(depth>0)geo.translate(0,0,-depth);const mesh=new T.Mesh(geo,mat);mesh.castShadow=depth>0;mesh.receiveShadow=depth>0;group.add(mesh);}offset+=hi-lo+.14;}
+ const box=new T.Box3().setFromObject(group),center=box.getCenter(new T.Vector3()),size=box.getSize(new T.Vector3());check(size.y>0&&size.x>0,"invalid glyph geometry");for(const mesh of group.children){mesh.geometry.translate(-center.x,-center.y,0);mesh.geometry.scale(1/size.y,1/size.y,1);}group.userData.bounds={width:size.x/size.y,height:1};return group;}
+function bandGeometry(T,r,w,d){const shape=new T.Shape();shape.absarc(0,0,r,0,Math.PI*2,false);const hole=new T.Path();hole.absarc(0,0,r-w,0,Math.PI*2,true);shape.holes.push(hole);const geo=new T.ExtrudeGeometry(shape,{depth:d,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:1,curveSegments:96});geo.translate(0,0,-d/2);return geo;}
+function buildArt(T,scene){
+ const mats={silver:new T.MeshStandardMaterial({color:0xc9c9c9,metalness:1,roughness:.19}),graphite:new T.MeshStandardMaterial({color:0x242424,metalness:.25,roughness:.54}),floor:new T.MeshStandardMaterial({color:0x353535,metalness:.73,roughness:.26}),glass:new T.MeshPhysicalMaterial({color:0xffffff,metalness:0,roughness:.055,transmission:.94,thickness:.65,ior:1.46,clearcoat:.5,attenuationColor:new T.Color(0xffffff),attenuationDistance:5}),white:new T.MeshStandardMaterial({color:0xececec,metalness:.15,roughness:.31,emissive:0xaaaaaa,emissiveIntensity:.14}),cross:new T.MeshBasicMaterial({color:0xececec,side:T.DoubleSide,transparent:true,opacity:0,depthWrite:false}),rail:new T.MeshStandardMaterial({color:0xbcbcbc,metalness:.85,roughness:.26})};
+ const objects=[];function put(geo,mat,x,y,z,name){const m=new T.Mesh(geo,mat);m.name=name;m.position.set(x,y,-z);m.castShadow=mat!==mats.glass;m.receiveShadow=true;scene.add(m);objects.push(m);return m;}
+ const floor=put(new T.PlaneGeometry(110,110),mats.floor,0,0,10,"reflective floor");floor.rotation.x=-Math.PI/2;floor.castShadow=false;
+ const sphere=put(new T.SphereGeometry(6,48,32),mats.graphite,-.8,4.1,17.2,"dark graphite horizon");sphere.castShadow=false;
+ const pillarGeo=new T.BoxGeometry(.42,6.5,.6);for(let k=0;k<12;k++){const x=k%2?5.9:-5.9,z=1.5+Math.floor(k/2)*5.2;put(pillarGeo,mats.graphite,x,3.25,z,"distant pillar "+k);}
+ const bands=[];function band(r,w,d,x,y,z,rx,ry,rz,name,sx=1,sy=1){const m=put(bandGeometry(T,r,w,d),mats.silver,x,y,z,name);m.rotation.set(rx,ry,rz);m.scale.set(sx,sy,1);bands.push(m);return m;}
+ band(5.7,.22,.13,0,6.0,8.7,.22,-.14,.16,"upper rear silver band",1,.40);
+ band(5.8,.28,.16,0,.18,5.3,1.18,-.16,.08,"lower foreground silver band",1,.60);
+ band(7.6,.16,.12,0,3.2,-2.6,.12,.22,.22,"entry orbit",1,.74);
+ band(7.1,.055,.035,0,4.6,1.6,.9,.12,-.12,"fine orbital ring",1,.68);
+ band(7.6,.10,.07,0,3.5,21.2,.48,.21,-.18,"distant orbit",1,.65);
+ const inlay=put(new T.RingGeometry(7.2,7.23,128),mats.silver,0,.008,8,"floor ellipse");inlay.rotation.x=-Math.PI/2;inlay.scale.y=1.45;inlay.castShadow=false;
+ for(const [x,y,z,r] of [[-5.4,3.7,2.7,1.2],[-3.5,4.5,7.7,.38],[4.8,3.1,9.3,.37],[3.4,.67,13,.49],[-3.7,.42,5.4,.15],[-2.1,5.7,12,.08],[5.7,1.1,17,.10]])put(new T.SphereGeometry(r,32,24),mats.glass,x,y,z,"glass sphere");
+ const rail=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(railPoints().map(p=>new T.Vector3(p[0],WORLD_Y+p[1],-p[2])),false,"centripetal"),148,.011,6,false),mats.rail);scene.add(rail);rail.name="continuous T01 line";
+ const crossA=makeWord(T,"イカリ",0,mats.cross),crossB=makeWord(T,"イカリ",0,mats.cross);scene.add(crossA,crossB);crossA.name="T01 near glyph";crossB.name="T01 far glyph";crossA.renderOrder=2;crossB.renderOrder=1;
+ const kon=makeWord(T,"KON",.05,mats.white),cry=makeWord(T,"CRY.",.15,mats.white.clone());scene.add(kon,cry);kon.name="fine KON";cry.name="heavy CRY.";const titleHeight=.92,kw=kon.userData.bounds.width*titleHeight,cw=cry.userData.bounds.width*titleHeight,gap=.21;kon.position.set(-(cw+gap)/2,WORLD_Y+.30,-9.2);cry.position.set((kw+gap)/2,WORLD_Y+.30,-9.2);
+ const titleMats=[kon.children[0].material,cry.children[0].material];for(const mat of titleMats){mat.transparent=true;mat.depthWrite=false;mat.opacity=0;}
+ function applyArt(f,sound){const q=crossingAt(f),fade=smooth01((f-305)/19)*(1-smooth01((f-459)/22));crossA.position.set(q.a[0],WORLD_Y+q.a[1],-q.a[2]);crossB.position.set(q.b[0],WORLD_Y+q.b[1],-q.b[2]);crossA.scale.setScalar(q.heightA);crossB.scale.setScalar(q.heightB);crossA.visible=crossB.visible=fade>0;mats.cross.opacity=fade;
+ const title=smooth01((f-575)/23);for(const [i,g] of [kon,cry].entries()){g.visible=title>0;g.scale.set(titleHeight,titleHeight,titleHeight*sound.thickness);titleMats[i].opacity=title;titleMats[i].emissiveIntensity=.14*sound.light;}
+ }
+ return {objects,bands,rail,crossA,crossB,kon,cry,titleMats,applyArt,titleHeight};}
+function actualProjection(T,camera,group){group.updateMatrixWorld(true);const w=group.userData.bounds.width;const corners=[[-w/2,-.5],[w/2,-.5],[w/2,.5],[-w/2,.5]].map(([x,y])=>new T.Vector3(x,y,0).applyMatrix4(group.matrixWorld).project(camera)).map(v=>[(v.x+1)*W/2,(1-v.y)*H/2]);const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);return {x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2,h:Math.max(...ys)-Math.min(...ys),corners};}
+
+async function gpuSetup(preflightOnly=false){
+ if(!preflightOnly)generationGate();
+ check(window.isSecureContext&&navigator.gpu,"WebGPU unavailable");
+ const [T,L,S,A,B,G,Dither]=await deadline(Promise.all([import("three/webgpu"),import("three/tsl"),import("three/addons/tsl/display/SSRNode.js"),import("three/addons/tsl/display/GTAONode.js"),import("three/addons/tsl/display/boxBlur.js"),import("three/addons/tsl/display/GaussianBlurNode.js"),import("three/addons/tsl/math/Bayer.js")]),30000,"Three.js postprocessing import");
+ check(T.REVISION==="180","unexpected Three.js revision");
+ const canvas=document.createElement("canvas");canvas.width=preflightOnly?1:W;canvas.height=preflightOnly?1:H;
+ canvas.style.cssText="display:block;width:100%;height:auto;border-radius:8px";
+ if(!preflightOnly)$("stage").appendChild(canvas);
+ let renderer=null,scene=null,env=null,lost=false,device=null,uncaptured=null,post=null,scenePass=null,ssrPass=null,aoPass=null,volumeScene=null,volumePass=null,volumeBlur=null,combinedTex=null;
+ let cleaned=false;const cleanup=()=>{if(cleaned)return;cleaned=true;try{for(const item of [post,volumeBlur,volumePass,combinedTex?.renderTarget,ssrPass,aoPass,scenePass]){try{item?.dispose();}catch(e){console.warn("pass cleanup",e);}}if(scene){const geos=new Set(),mats=new Set();scene.traverse(o=>{if(o.geometry)geos.add(o.geometry);if(o.material){for(const m of [].concat(o.material))mats.add(m);}});scene.environment=null;geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());scene.clear();}if(volumeScene){volumeScene.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});volumeScene.clear();}if(env)env.dispose();if(renderer)renderer.dispose();}finally{try{if(device){if(uncaptured)device.removeEventListener("uncapturederror",uncaptured);device.destroy();}}finally{canvas.remove();canvas.width=1;canvas.height=1;}}};
+ try{
+  renderer=new T.WebGPURenderer({canvas,alpha:false,antialias:true,powerPreference:"high-performance"});
+  renderer.setPixelRatio(1);renderer.setSize(preflightOnly?1:W,preflightOnly?1:H,false);
+  renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=0.78;
+  renderer.outputColorSpace=T.SRGBColorSpace;renderer.shadowMap.enabled=true;
+  await deadline(renderer.init(),20000,"Three.js WebGPU init");
+  check(renderer.backend?.isWebGPUBackend===true,"WebGPU fallback is not permitted");
+  device=renderer.backend.device;check(device,"GPU device missing");
+  device.lost.then(()=>{lost=true;});
+  let gpuError="";uncaptured=e=>{gpuError=e.error?.message||"GPU error";};device.addEventListener("uncapturederror",uncaptured);
+
+  scene=new T.Scene();scene.background=new T.Color(0x101010);scene.fog=new T.FogExp2(0x303030,.026);
+  const ew=256,eh=128,px=new Float32Array(ew*eh*4);for(let y=0;y<eh;y++)for(let x=0;x<ew;x++){const u=x/ew,v=y/eh,i=(y*ew+x)*4;const lobe=(c,d,sx,sy)=>Math.exp(-.5*((Math.min(Math.abs(u-c),1-Math.abs(u-c))/sx)**2+((v-d)/sy)**2));const val=.035+6*lobe(.20,.24,.085,.18)+3.2*lobe(.68,.35,.065,.20)+1.1*lobe(.48,.07,.2,.08);px[i]=px[i+1]=px[i+2]=val;px[i+3]=1;}
+  const half=new Uint16Array(px.length);for(let i=0;i<px.length;i++)half[i]=T.DataUtils.toHalfFloat(px[i]);env=new T.DataTexture(half,ew,eh,T.RGBAFormat,T.HalfFloatType);env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.LinearSRGBColorSpace;env.minFilter=T.LinearFilter;env.magFilter=T.LinearFilter;env.needsUpdate=true;scene.environment=env;scene.environmentIntensity=.9;
+  const art=buildArt(T,scene);
+  const hemi=new T.HemisphereLight(0xffffff,0x222222,.48);scene.add(hemi);
+  const key=new T.SpotLight(0xffffff,72,35,Math.PI/5,.65,2);key.position.set(-4,7,-5);key.target.position.set(0,2.4,-8);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.bias=-.0004;key.shadow.normalBias=.025;scene.add(key,key.target);
+  const rim=new T.PointLight(0xffffff,42,24,2);rim.position.set(5.2,5,-12);scene.add(rim);
+  const fill=new T.PointLight(0xffffff,20,20,2);fill.position.set(-4,1.2,-14);scene.add(fill);
+  const camera=new T.PerspectiveCamera(2*Math.atan(540/1030)*180/Math.PI,W/H,.30,100);
+  // Three.js r180 official SSR and GTAO patterns; shared G-buffer.
+  post=new T.PostProcessing(renderer);
+  scenePass=L.pass(scene,camera);
+  scenePass.setMRT(L.mrt({output:L.output,normal:L.normalView,metalrough:L.vec2(L.metalness,L.roughness)}));
+  const beauty=scenePass.getTextureNode("output"),normal=scenePass.getTextureNode("normal"),depth=scenePass.getTextureNode("depth"),mr=scenePass.getTextureNode("metalrough");
+  // Signed normals remain half-float; do not pack signed values in unsigned texture.
+  scenePass.getTexture("metalrough").type=T.UnsignedByteType;
+  ssrPass=S.ssr(beauty,depth,normal,mr.r,mr.g);
+  ssrPass.resolutionScale=0.5;ssrPass.quality.value=0.5;ssrPass.blurQuality.value=2;ssrPass.maxDistance.value=3.0;ssrPass.opacity.value=0.7;ssrPass.thickness.value=0.08;
+  aoPass=A.ao(depth,normal,camera);aoPass.resolutionScale=0.5;aoPass.radius.value=0.35;aoPass.scale.value=0.8;aoPass.thickness.value=0.8;
+  const reflected=L.blendColor(beauty,ssrPass);
+  const occlusion=L.mix(L.float(1),aoPass.getTextureNode().r,0.65);
+  const lit=L.vec4(reflected.rgb.mul(occlusion),reflected.a);
+  // Separate black volume scene: keep original beauty, lights, and reflections untouched.
+  // Use r180 VolumeNodeMaterial and scene-depth occlusion, but no secondary shadow map.
+  volumeScene=new T.Scene();volumeScene.background=new T.Color(0x000000);
+  const volumeMat=new T.VolumeNodeMaterial();
+  volumeMat.steps=12;
+  volumeMat.offsetNode=Dither.bayer16(L.screenCoordinate);
+  volumeMat.scatteringNode=L.Fn(()=>L.float(0.65));
+  volumeMat.depthNode=depth.sample(L.screenUV);
+  const volumeMesh=new T.Mesh(new T.BoxGeometry(26,12,26),volumeMat);volumeMesh.position.set(0,3,-8);volumeMesh.frustumCulled=false;volumeMesh.receiveShadow=true;volumeScene.add(volumeMesh);
+  const volumeKey=new T.SpotLight(key.color.clone(),key.intensity,key.distance,key.angle,key.penumbra,key.decay);volumeKey.position.copy(key.position);volumeKey.target.position.copy(key.target.position);// r180 VolumetricLightingModel.direct() unconditionally multiplies lightNode.shadowNode.
+  // Explicit unity shadow node preserves the intended no-secondary-shadow-map design.
+  // AnalyticLightNode.setupShadow() accepts light.shadow.shadowNode when cast/receive are true.
+  volumeKey.castShadow=true;volumeKey.shadow.shadowNode=L.float(1);volumeScene.add(volumeKey,volumeKey.target);
+  volumePass=L.pass(volumeScene,camera,{depthBuffer:false});volumePass.setResolution(0.25);
+  volumeBlur=G.gaussianBlur(volumePass,L.uniform(0.65));
+  const atmospheric=L.vec4(lit.rgb.add(volumeBlur.rgb.mul(0.22)),lit.a);
+  // Official mobile basic DoF: depth-weighted blur of the completed composite,
+  // rather than blurring unreflected beauty and losing SSR/GTAO.
+  combinedTex=L.convertToTexture(atmospheric);
+  const focusDepth=L.uniform(6.8),focusPoint=new T.Vector3(0,1.95,0),focusView=new T.Vector3();
+  const viewZ=scenePass.getViewZNode();
+  const blurWeight=L.smoothstep(1.15,4.4,viewZ.add(focusDepth).abs());
+  const blurred=B.boxBlur(combinedTex,{size:L.int(1),separation:L.int(3)});
+  post.outputNode=L.mix(combinedTex,blurred,blurWeight);
+
+
+
+  function pose(index){const p=cameraAt(index),yaw=p.yaw*Math.PI/180,sound=envelope?soundAt(index):{thickness:1,light:1};camera.position.set(p.x,WORLD_Y,-p.z);camera.lookAt(p.x+Math.sin(yaw),WORLD_Y,-p.z-Math.cos(yaw));camera.updateMatrixWorld(true);art.applyArt(index,sound);key.intensity=72*sound.light;volumeKey.intensity=key.intensity;focusPoint.set(0,WORLD_Y+.27,index>=598?-9.2:-5.6);focusDepth.value=-focusView.copy(focusPoint).applyMatrix4(camera.matrixWorldInverse).z;scene.updateMatrixWorld(true);}
+  function geometryQA(){pose(413);const a=actualProjection(T,camera,art.crossA),b=actualProjection(T,camera,art.crossB),dist=Math.hypot(a.x-b.x,a.y-b.y),hd=Math.abs(a.h-b.h);const rays=[];const ray=new T.Raycaster();for(const g of [art.crossA,art.crossB]){const v=g.getWorldPosition(new T.Vector3()),dir=v.clone().sub(camera.position),len=dir.length();ray.set(camera.position,dir.normalize());ray.near=.30;ray.far=len-.03;const hits=ray.intersectObjects(art.objects.filter(x=>x.material.transmission!==.94),false);rays.push(hits.map(x=>x.object.name));}return {center_distance:dist,height_difference:hd,a,b,anchor_geometry_pass:dist<=1&&hd<=1,center_ray_obstacles:rays,opaque_anchor_center_clear:rays.every(x=>x.length===0),scene_mesh_count:art.objects.length,band_count:art.bands.length,glyph_source:"procedural outline approximation; not original Blender glyph meshes",rendered:false};}
+  const ctx={T,renderer,device,post,pose,camera,focusDepth,get lost(){return lost},get gpuError(){return gpuError}};
+  const base={canvas,backend:"three-r180-webgpu",effects:{scene:"V04 monochrome interpretation",ssr_resolution_scale:.5,gtao_resolution_scale:.5,volumetric_resolution_scale:.25,reference_sha:REF_SHA,art_match:"UNVERIFIED"},geometryQA,destroy:cleanup};
+  if(preflightOnly)return base;
+  return {...base,...directCaptureAdapter(ctx),
+async preflight(startIndex=0){
+    const results=[];const original=post.outputNode;
+    async function verify(label,node,index=0){
+      post.outputNode=node;post.needsUpdate=true;pose(index);
+      const started=performance.now();let thrown=null;let scoped=null;
+      device.pushErrorScope("validation");
+      try{post.render();await deadline(renderer.waitForGPU(),25000,label+" GPU completion");}
+      catch(e){thrown=e;}
+      finally{try{scoped=await deadline(device.popErrorScope(),12000,label+" GPU validation");}catch(e){if(!thrown)thrown=e;}}
+      if(thrown||scoped||lost||gpuError){const err=Error(label+": "+(thrown?.message||scoped?.message||gpuError||"GPU device lost"));err.preflight=results.concat({stage:label,status:"FAIL",error:err.message});throw err;}
+      results.push({stage:label,status:"PASS",elapsed_ms:Math.round(performance.now()-started)});
+    }
+    await verify("volume_with_depth",L.vec4(volumeBlur.rgb,1),startIndex);
+    await verify("combined_dof_at_segment_start",original,startIndex);
+    await verify("combined_dof_repeat_at_segment_start",original,startIndex);
+    return results;
+  },async frame(index){check(!lost&&!gpuError,gpuError||"GPU device lost");pose(index);post.render();await deadline(renderer.waitForGPU(),25000,"GPU completion");check(!lost&&!gpuError,gpuError||"GPU device lost");}};
+ }catch(e){cleanup();throw e;}
+}
+
 function audioMeter(){return {pcm:[new Float32Array(D*SR),new Float32Array(D*SR)],next:0,covered:0,coverage_errors:0,pre_samples:0,post_samples:0,peak:0,clips:0};}
 function meterBlock(q,buf,ts){check(buf.sampleRate===SR&&buf.numberOfChannels===2,"audio format");const base=Math.round(ts*SR);check(Math.abs(ts*SR-base)<.1,"PCM grid");const a=[buf.getChannelData(0),buf.getChannelData(1)];for(let k=0;k<buf.length;k++){const i=base+k;if(i<0){q.pre_samples++;continue;}if(i>=D*SR){q.post_samples++;continue;}if(i!==q.next)q.coverage_errors++;q.next=i+1;q.covered++;for(let c=0;c<2;c++){const x=a[c][k];check(Number.isFinite(x),"nonfinite PCM");q.pcm[c][i]=x;q.peak=Math.max(q.peak,Math.abs(x));if(Math.abs(x)>=1)q.clips++;}}}
 function corr(a,b,start,end,lag,stride=1){let sx=0,sy=0,xx=0,yy=0,xy=0,n=0;const lo=Math.max(start,-lag),hi=Math.min(end,b.length-lag);for(let i=lo;i<hi;i+=stride){const x=a[i],y=b[i+lag];sx+=x;sy+=y;xx+=x*x;yy+=y*y;xy+=x*y;n++;}const vx=xx-sx*sx/n,vy=yy-sy*sy/n;return n>1&&vx>1e-10&&vy>1e-10?(xy-sx*sy/n)/Math.sqrt(vx*vy):null;}
@@ -355,15 +499,66 @@ async function probeFile(m,b,verified,guard){
  }finally{input.dispose();}
 }
 
-$("check").onclick=async()=>{if(active)return;active=true;$("check").disabled=true;const data={version:"V13",scope:"PREP_ONLY",status:"PARTIAL",generation_allowed:false,scene_ready:false,video_generated:false,image_rendered:false,checkpoint_written:false};
- try{data.numeric=numericQA();check(data.numeric.pass,"numeric QA");if($("wav").files[0])data.audio=await readSource($("wav").files[0]);else data.audio={status:"FILE_SELECTION_PENDING"};
- if($("ref").files[0]&&$("zip").files[0])data.art=await verifyArt($("ref").files[0],$("zip").files[0]);else data.art={status:"ASSET_BYTES_PENDING"};
- if(navigator.storage?.estimate)data.storage=storageGate(await navigator.storage.estimate());else data.storage={pass:false,reason:"storage estimate unavailable"};
- show(data);
- const [T,M]=await deadline(Promise.all([import("three/webgpu"),import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm")]),30000,"dependency import");data.dependencies={three:T.REVISION,mediabunny:["Output","VideoSampleSource","VideoSample","EncodedVideoPacketSource","AudioBufferSource","AudioSampleSink","CanvasSink","Input","BlobSource","EncodedPacketSink","BufferTarget","Mp4OutputFormat"].every(k=>typeof M[k]==="function")};check(T.REVISION==="180"&&data.dependencies.mediabunny,"dependency mismatch");
- if(navigator.gpu){const adapter=await deadline(navigator.gpu.requestAdapter(),15000,"GPU adapter");if(adapter){const device=await deadline(adapter.requestDevice(),15000,"GPU device");try{data.gpu={device_init:true,max_texture_2d:device.limits.maxTextureDimension2D,max_buffer_size:device.limits.maxBufferSize,rendered:false};}finally{device.destroy();}}else data.gpu={device_init:false};}else data.gpu={device_init:false};
- data.status="PREFLIGHT_ONLY_SCENE_BLOCKED";}catch(e){data.error=String(e);data.status="BLOCK";}finally{show(data);$("status").textContent=data.status;active=false;$("check").disabled=false;}
+function metadataCheck(){
+ return deadline(new Promise((res,rej)=>{
+ const ready=()=>res({width:video.videoWidth,height:video.videoHeight,duration:video.duration});
+ video.addEventListener("loadedmetadata",ready,{once:true});
+ video.addEventListener("error",()=>rej(Error("Safari MP4 metadata read failed")),{once:true});
+ video.src=url;video.load();
+ if(video.readyState>=1)ready();
+ }),15000,"Safari MP4 metadata");
+}
+async function run(){
+ generationGate();check(preflightOK&&sourcePCM&&envelope,"select and verify WAV first");check(storageGate(await navigator.storage.estimate()).pass,"storage gate");
+ if(active)return;active=true;aborted=false;go.disabled=true;stop.disabled=false;stop.hidden=false;$("save").hidden=true;$("share").hidden=true;
+ if(url){video.removeAttribute("src");video.load();URL.revokeObjectURL(url);url=null;}blob=null;video.hidden=true;
+ const begin=performance.now();
+ const data={version:"V13",stage:"init",scope:"real_music_v04_30s_trial",recipe:RECIPE,requested:{width:W,height:H,fps:FPS,frames:N,seconds:D,video:"H.264",audio:"AAC-LC real PCM",segments:PARTS,segment_seconds:SEGSEC},status:"RUNNING",media_generated:false,playback:"UNVERIFIED",submitted:0,committed_frames:0,segments:[],old_db_access:false,production_pass:false,explicit_full_frame_cpu_readback:true,thumbnail_readback:"128x72 GPU input and decoded output all frames",planned_cumulative_copy_bytes:N*FRAME_BYTES,memory_policy:{max_segment_bytes:MAX_PART,max_final_bytes:MAX_FINAL,gpu_release_each_segment:true,actual_memory_usage:"UNMEASURABLE_IN_SAFARI"}};
+ const guard=()=>{check(!aborted,"stopped by user");check(performance.now()-begin<300000,"5 minute processing limit; resume saved segments");check(!document.hidden,"Safari moved to background");};
+ show(data);progress.value=0;
+ async function work(){
+  guard();const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"Mediabunny");
+  for(const k of ["Output","Mp4OutputFormat","BufferTarget","VideoSampleSource","VideoSample","AudioBufferSource","AudioSampleSink","Input","BlobSource","EncodedVideoPacketSource","EncodedPacketSink","CanvasSink"])check(typeof m[k]==="function","missing "+k);
+  data.stage="checkpoint_scan";const saved=await keys();check(saved.every(k=>Number.isInteger(k)&&k>=0&&k<PARTS),"unexpected checkpoint key");
+  // Require a contiguous prefix; never silently replace or rerender corrupted entries.
+  check(saved.every((k,i)=>k===i),"noncontiguous checkpoint prefix");
+  const verified=[];
+  for(let id=0;id<PARTS;id++){
+   guard();const r=await getPart(id);
+   if(r){data.stage="checkpoint_resume";const q=await inspectPart(m,r,id,guard);verified.push(q);data.segments.push({...q.meta,source:"reused",render_timing:r.render_timing,readback_timing:r.readback_timing,encode_timing:r.encode_timing,elapsed_s:r.elapsed_s});}
+   else{const q=await renderPart(m,id,data,guard);verified.push(q.q);data.segments.push(q.record);}
+   if(id>0){const left=verified[id-1].frames,right=verified[id].frames,edge=mad(left[SEG-1],right[0]);check(boundaryGate(edge,mad(left[SEG-2],left[SEG-1]),mad(right[0],right[1])),"checkpoint boundary gate at "+id*SEG);}
+   data.committed_frames=(id+1)*SEG;data.submitted=data.committed_frames;progress.value=data.committed_frames;show(data);await refreshSaved();
+   await new Promise(r=>setTimeout(r,300));
+  }
+  guard();data.stage="assemble";$("status").textContent="5区間を再エンコードなしで結合中";show(data);
+  blob=await assemble(m,data,guard,verified);data.media_generated=true;guard();
+  data.stage="verify";data.file=await deadline(probeFile(m,blob,verified,guard),120000,"final MP4 QA");
+  data.technical_pass=evaluate(data.file)&&data.file.visual.pass===true&&data.file.audio.pass===true;check(data.technical_pass,"MP4 technical/visual boundary QA mismatch");
+  url=URL.createObjectURL(blob);video.hidden=false;data.safari_metadata=await metadataCheck();
+  check(data.safari_metadata.width===W&&data.safari_metadata.height===H&&Math.abs(data.safari_metadata.duration-D)<=0.10,"Safari metadata mismatch");
+  data.stage="complete";data.status="PASS_TECHNICAL_PLAYBACK_PENDING";data.playback="USER_CHECK_REQUIRED";
+  $("save").href=url;$("save").hidden=false;$("share").hidden=false;
+  $("status").textContent="30秒MP4検査合格。再生・保存してください。区間データは保持してください。";
+ }
+ try{
+  if(navigator.locks){await navigator.locks.request(DBNAME,{ifAvailable:true},async lock=>{check(lock,"V13 is running in another tab");await work();});}
+  else await work();
+ }catch(e){data.status=aborted?"STOPPED":data.stage==="precompile"?"PRECOMPILE_FAIL":"FAIL";data.error=String(e);if(e.preflight)data.preflight=e.preflight;$("status").textContent=data.status+"｜"+data.error+"｜保存済み区間は保持";}
+ finally{data.elapsed_s=Number(((performance.now()-begin)/1000).toFixed(2));show(data);active=false;go.disabled=!GENERATION_ALLOWED;stop.disabled=true;await refreshSaved();}
+}
+
+$("wav").onchange=()=>{sourcePCM=null;envelope=null;preflightOK=false;};
+$("check").onclick=async()=>{if(active)return;active=true;preflightOK=false;$("check").disabled=true;const data={version:"V13",scope:"NON_VIDEO_PREFLIGHT",status:"PARTIAL",generation_allowed:GENERATION_ALLOWED,scene_ready:SCENE_READY,video_generated:false,image_rendered:false,checkpoint_written:false};let gpu=null;
+ try{data.numeric=numericQA();check(data.numeric.pass,"numeric QA");if($("wav").files[0])data.audio=await readSource($("wav").files[0]);else{sourcePCM=null;envelope=null;data.audio={status:"FILE_SELECTION_PENDING"};}
+ if($("ref").files[0]&&$("zip").files[0])data.art=await verifyArt($("ref").files[0],$("zip").files[0]);else data.art={status:"REFERENCE_VERIFIED_BY_DEVELOPER",reference_sha:REF_SHA,zip_sha:ZIP_SHA,actual_webgpu_art:"UNVERIFIED"};
+ data.storage=navigator.storage?.estimate?storageGate(await navigator.storage.estimate()):{pass:false,reason:"storage estimate unavailable"};show(data);
+ const M=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"dependency import");data.dependencies={mediabunny:["Output","VideoSampleSource","VideoSample","EncodedVideoPacketSource","AudioBufferSource","AudioSampleSink","CanvasSink","Input","BlobSource","EncodedPacketSink","BufferTarget","Mp4OutputFormat"].every(k=>typeof M[k]==="function")};check(data.dependencies.mediabunny,"dependency mismatch");
+ gpu=await gpuSetup(true);data.gpu={device_init:true,backend:gpu.backend,rendered:false};data.geometry=gpu.geometryQA();check(data.geometry.anchor_geometry_pass&&data.geometry.opaque_anchor_center_clear,"scene projection or center ray obstruction");preflightOK=!!data.audio.source_sha&&data.storage.pass;data.status=preflightOK?"PREFLIGHT_PASS_RENDER_UNVERIFIED":"PREFLIGHT_PARTIAL_INPUT_OR_STORAGE";
+ }catch(e){data.error=String(e);data.status="BLOCK";}finally{gpu?.destroy();show(data);$("status").textContent=data.status;active=false;$("check").disabled=false;}
 };
+go.disabled=!GENERATION_ALLOWED;go.onclick=()=>run().catch(e=>{$("status").textContent=String(e);});stop.onclick=()=>{aborted=true;};
 $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);}catch{report.select();}};
-show({version:"V13",status:"PREFLIGHT_ONLY_SCENE_BLOCKED",generation_allowed:false,numeric:numericQA()});
+$("share").onclick=async()=>{try{const file=new File([blob],"suilemo_v13_real_music.mp4",{type:"video/mp4"});check(navigator.canShare?.({files:[file]}),"share unavailable");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
+show({version:"V13",status:"SCENE_IMPLEMENTED_PREFLIGHT_PENDING",generation_allowed:false,numeric:numericQA()});
 </script></body></html>
