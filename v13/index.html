@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; img-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V13 準備</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main><h1>V13｜実装準備・非動画検査</h1><p>動画生成禁止。V04美術実体の照合・シーン接続は未完了。現段階では描画やエンコードを開始できません。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">保存領域は作成しません</p><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><script>"use strict";
+const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,FRAME_BYTES=W*H*4,THUMB_W=128,THUMB_H=72;
+const $=id=>document.getElementById(id);
+const progress=$("progress"),report=$("report");
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+function show(data){report.value=JSON.stringify(data,null,2);}
+
+const SOURCE_SHA="041eeecd59f2bbe8804e437a43bb41149abc3b2bb3b1c4c305745dad3d8c7b47",PCM_SHA="ab2a53e64226f541446c389595d893aa51f7cdc8257be8fd98355415e36104b7",REF_SHA="4366851d0e115206510343674ad913fc3ae2b2517c40d3f34b96fb98eed5a7b7",ZIP_SHA="ab8d37e939484f800744772acf9cace105a5c90c4987db6512facc8df0366273",DESIGN="V13-30s-V01";
+const DBNAME="suilemo-v13-real-music-30s-v1",RECIPE="v13-30s-v01-preflight",IDENTITY=[DESIGN,SOURCE_SHA,REF_SHA,ZIP_SHA].join(":");
+const GENERATION_ALLOWED=false,SCENE_READY=false;
+let sourcePCM=null,envelope=null,active=false;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+function hermite(x,a,b,p,q,v,w){const d=(b-a)/FPS,z=clamp((x-a)/(b-a),0,1),z2=z*z,z3=z2*z;return (2*z3-3*z2+1)*p+(z3-2*z2+z)*d*v+(-2*z3+3*z2)*q+(z3-z2)*d*w;}
+const crossX=f=>.41*Math.tanh((f-413)/FPS),crossV=f=>.41/Math.cosh((f-413)/FPS)**2;
+function cameraAt(f){
+ check(Number.isFinite(f)&&f>=0&&f<=N,"global frame out of range");
+ let x,z,yaw;
+ if(f<324){x=hermite(f,0,324,-.8,crossX(324),0,crossV(324));z=hermite(f,0,324,-8,0,0,0);yaw=hermite(f,0,324,-8,0,0,0);}
+ else if(f<=459){x=crossX(f);z=0;yaw=0;}
+ else if(f<=598){x=hermite(f,459,598,crossX(459),.5,crossV(459),.03);z=hermite(f,459,598,0,.6,0,.10);yaw=hermite(f,459,598,0,3,0,.3);}
+ else{x=hermite(f,598,900,.5,.8,.03,.03);z=hermite(f,598,900,.6,2.4,.10,.18);yaw=hermite(f,598,900,3,9,.3,.6);}
+ return {x,y:0,z,yaw,pitch:0,roll:0,fov:2*Math.atan(540/1030)*180/Math.PI,near:.30};
+}
+function crossingAt(f){const u=(f-413)/FPS;return {camera:cameraAt(f),a:[1.38*u,.27+.20*Math.sin(u),5.6],b:[-1.38*u,.27*8.7/5.6-.20*Math.sin(u),8.7],heightA:.76,heightB:.76*8.7/5.6};}
+function railPoints(){const a=[],b=[];for(let j=0;j<37;j++){const x=-5.5+11*j/36;a.push([x,-.32+.20*Math.sin(x/1.38),5.6]);b.push([x,-.50+.20*Math.sin(x/1.38),8.7]);}return a.concat(b.reverse());}
+function projectCross(f){const q=crossingAt(f),p=(a,h)=>[960+1030*(a[0]-q.camera.x)/a[2],540-1030*a[1]/a[2],1030*h/a[2]];const a=p(q.a,q.heightA),b=p(q.b,q.heightB);return {a,b,center_distance:Math.hypot(a[0]-b[0],a[1]-b[1]),height_difference:Math.abs(a[2]-b[2])};}
+function phase(f){return f<324?0:f<459?1:f<598?2:3;}
+function parseWav(bytes,expectedFrames=11982720){const d=new DataView(bytes),four=p=>String.fromCharCode(...new Uint8Array(bytes,p,4)),u=p=>d.getUint32(p,true);check(bytes.byteLength>=44&&four(0)==="RIFF"&&four(8)==="WAVE"&&u(4)+8===bytes.byteLength,"RIFF header");let fmt=null,data=null;
+ for(let p=12;p<bytes.byteLength;){check(p+8<=bytes.byteLength,"truncated WAV chunk");const type=four(p),size=u(p+4),start=p+8,end=start+size;check(end+(size&1)<=bytes.byteLength,"WAV chunk bounds");if(type==="fmt "){check(!fmt&&size>=16,"WAV fmt");fmt={format:d.getUint16(start,true),channels:d.getUint16(start+2,true),rate:u(start+4),byteRate:u(start+8),align:d.getUint16(start+12,true),bits:d.getUint16(start+14,true)};}if(type==="data"){check(!data,"duplicate WAV data");data={start,size};}p=end+(size&1);}
+ check(fmt&&data&&fmt.format===1&&fmt.channels===2&&fmt.rate===SR&&fmt.byteRate===SR*4&&fmt.align===4&&fmt.bits===16&&data.size===expectedFrames*4,"WAV PCM format/count");return {...fmt,frames:data.size/4,offset:data.start};
+}
+function slicePCM(bytes,meta,start,count){check(start>=0&&count>0&&start+count<=meta.frames,"PCM slice bounds");const d=new DataView(bytes,meta.offset+start*4,count*4),a=[new Float32Array(count),new Float32Array(count)];for(let k=0;k<count;k++)for(let c=0;c<2;c++)a[c][k]=d.getInt16(4*k+2*c,true)/32768;return a;}
+async function readSource(file){check(file&&file.size===47944708,"source WAV size");const bytes=await file.arrayBuffer();check(await hashBytes(bytes)===SOURCE_SHA,"source WAV SHA mismatch");const meta=parseWav(bytes);check(await hashBytes(new Uint8Array(bytes,meta.offset+2304000*4,1440000*4))===PCM_SHA,"slice PCM SHA mismatch");sourcePCM=slicePCM(bytes,meta,2304000,1440000);envelope=makeEnvelope(sourcePCM);return {source_sha:SOURCE_SHA,pcm_sha:PCM_SHA,frames:1440000,rate:SR,channels:2,source_frames:meta.frames,data_offset:meta.offset};}
+function makeEnvelope(p){const n=p[0].length/480;check(Number.isInteger(n),"10ms PCM grid");const a=new Float32Array(n);let q=0;for(let j=0;j<n;j++){let sum=0;for(let k=j*480;k<(j+1)*480;k++)sum+=p[0][k]**2+p[1][k]**2;const db=10*Math.log10(Math.max(sum/960,1e-12)),v=clamp((db+35)/21,0,1),alpha=1-Math.exp(-.01/(v>q?.05:.12));q+=alpha*(v-q);a[j]=q;}return a;}
+function audioBuffer(sec){check(sourcePCM&&Number.isInteger(sec)&&sec>=0&&sec<D,"real PCM not loaded");const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});for(let ch=0;ch<2;ch++)b.copyToChannel(sourcePCM[ch].subarray(sec*SR,(sec+1)*SR),ch);return b;}
+function soundAt(f){check(envelope,"audio envelope unavailable");const pos=f*100/FPS,j=Math.floor(pos),a=envelope[Math.min(j,envelope.length-1)],b=envelope[Math.min(j+1,envelope.length-1)],v=a+(b-a)*(pos-j);if(f<598)return {thickness:1,light:f>=493?.7:1};return {thickness:1+.25*v,light:.7+.5*v};}
+function storageGate(e){const need=120*1024*1024+48*1024*1024;return {required_bytes:need,available_bytes:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)?Math.max(0,e.quota-e.usage):null,pass:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)&&e.quota-e.usage>=need,physical_ram:"UNVERIFIED"};}
+function generationGate(){check(GENERATION_ALLOWED&&SCENE_READY,"V13 generation disabled; verified art adapter and separate approval required");}
+async function gpuSetup(){generationGate();throw Error("V04 scene adapter not implemented: asset bytes unavailable");}
+function audioMeter(){return {pcm:[new Float32Array(D*SR),new Float32Array(D*SR)],next:0,covered:0,coverage_errors:0,pre_samples:0,post_samples:0,peak:0,clips:0};}
+function meterBlock(q,buf,ts){check(buf.sampleRate===SR&&buf.numberOfChannels===2,"audio format");const base=Math.round(ts*SR);check(Math.abs(ts*SR-base)<.1,"PCM grid");const a=[buf.getChannelData(0),buf.getChannelData(1)];for(let k=0;k<buf.length;k++){const i=base+k;if(i<0){q.pre_samples++;continue;}if(i>=D*SR){q.post_samples++;continue;}if(i!==q.next)q.coverage_errors++;q.next=i+1;q.covered++;for(let c=0;c<2;c++){const x=a[c][k];check(Number.isFinite(x),"nonfinite PCM");q.pcm[c][i]=x;q.peak=Math.max(q.peak,Math.abs(x));if(Math.abs(x)>=1)q.clips++;}}}
+function corr(a,b,start,end,lag,stride=1){let sx=0,sy=0,xx=0,yy=0,xy=0,n=0;const lo=Math.max(start,-lag),hi=Math.min(end,b.length-lag);for(let i=lo;i<hi;i+=stride){const x=a[i],y=b[i+lag];sx+=x;sy+=y;xx+=x*x;yy+=y*y;xy+=x*y;n++;}const vx=xx-sx*sx/n,vy=yy-sy*sy/n;return n>1&&vx>1e-10&&vy>1e-10?(xy-sx*sy/n)/Math.sqrt(vx*vy):null;}
+function rms(a,start,end){let ss=0;for(let i=start;i<end;i++)ss+=a[i]*a[i];return Math.sqrt(ss/(end-start));}
+function alignWindow(a,b,start,end){const zero=corr(a,b,start,end,0);let coarse=[];for(let lag=-2400;lag<=2400;lag+=16){const c=corr(a,b,start,end,lag,16);if(c!==null)coarse.push([lag,c]);}coarse.sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const candidates=new Set([0]);for(const [lag] of coarse.slice(0,4))for(let j=-16;j<=16;j++)if(Math.abs(lag+j)<=2400)candidates.add(lag+j);let ranked=[...candidates].map(lag=>[lag,corr(a,b,start,end,lag,4)??-1]).sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const refined=[...new Set([0,...ranked.slice(0,5).map(x=>x[0])])].map(lag=>[lag,corr(a,b,start,end,lag)??-1]).sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const [lag,correlation]=refined[0];return {lag_samples:lag,lag_ms:lag/SR*1000,correlation,zero_lag_correlation:zero,ambiguous:refined.slice(1).some(x=>Math.abs(x[0]-lag)>480&&x[1]>=correlation-.0001),pass:correlation>=.98&&Math.abs(lag)<=480};}
+function assessAudio(q){check(sourcePCM,"missing source PCM");const rows=[];for(let c=0;c<2;c++)for(let sec=0;sec<D;sec++){const start=sec*SR,end=start+SR,ref=rms(sourcePCM[c],start,end),out=rms(q.pcm[c],start,end),db=20*Math.log10(Math.max(ref,1e-12)),gain=20*Math.log10(Math.max(out,1e-12)/Math.max(ref,1e-12));rows.push({channel:c,second:sec,input_rms_dbfs:db,output_rms_dbfs:20*Math.log10(Math.max(out,1e-12)),gain_db:gain,...(db>=-45?{valid:true,...alignWindow(sourcePCM[c],q.pcm[c],start,end)}:{valid:false,status:"LOW_SIGNAL_REVIEW"})});}
+ const valid=rows.filter(x=>x.valid);return {coverage_pass:q.coverage_errors===0&&q.covered===D*SR&&q.next===D*SR,covered_sample_frames:q.covered,coverage_errors:q.coverage_errors,pre_samples:q.pre_samples,post_samples:q.post_samples,peak:q.peak,clips:q.clips,valid_windows:valid.length,windows_pass:valid.filter(x=>x.pass&&!x.ambiguous).length,pass:valid.length>0&&valid.every(x=>x.pass&&!x.ambiguous)&&q.clips===0,windows:rows,lag_search:"coarse-to-fine ±50ms, nonzero ambiguity fails"};}
+async function verifyArt(refFile,zipFile){check(refFile&&refFile.size===217450&&zipFile&&zipFile.size===2583429,"V04 reference/ZIP missing or wrong size");const [refHash,zipHash]=await Promise.all([sha256(refFile),sha256(zipFile)]);check(refHash===REF_SHA&&zipHash===ZIP_SHA,"V04 SHA mismatch");let bitmap=await createImageBitmap(refFile);try{check(bitmap.width===1536&&bitmap.height===864,"V04 image dimensions");}finally{bitmap.close();}return {reference_sha:refHash,zip_sha:zipHash,reference_decode:"PASS",zip_crc:"UNVERIFIED_IN_BROWSER",scene_ready:false};}
+function numericQA(){const p=projectCross(413);const ranges=[0,324,459,598,900];const points=ranges.map(cameraAt),eps=.001;const continuity=[180,324,360,459,540,598,720].map(f=>{const a=cameraAt(f-eps),b=cameraAt(f),c=cameraAt(f+eps);return {f,max_derivative_delta:Math.max(...["x","z","yaw"].map(k=>Math.abs((c[k]-b[k]-(b[k]-a[k]))/eps*FPS)))};});const pass=p.center_distance<=1&&p.height_difference<=1&&continuity.every(x=>x.max_derivative_delta<.01)&&railPoints().length===74&&Array.from({length:N},(_,f)=>cameraAt(f)).every(x=>Object.values(x).every(Number.isFinite));return {pass,anchor:p,camera:points,continuity,phase_counts:[0,1,2,3].map(x=>Array.from({length:N},(_,f)=>phase(f)===x).filter(Boolean).length),rail_vertices:74};}
+// Thumbnail QA: tiny diagnostic readback, never full-frame CPU rendering.
+const SAMPLE_FRAMES=[0,1,2,177,178,179];
+const hashBytes=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),n=>n.toString(16).padStart(2,"0")).join("");
+function reduceRGBA(p){
+ check(p.length===FRAME_BYTES,"wrong RGBA size");
+ const a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  let sum=0;for(let dy=0;dy<15;dy++)for(let dx=0;dx<15;dx++){
+   const i=((y*15+dy)*W+x*15+dx)*4;
+   sum+=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+  }a[y*THUMB_W+x]=Math.round(sum/225);
+ }return a;
+}
+function summarizeMotion(d){
+ check(d.length===SEG&&d[0]===null&&d.slice(1).every(Number.isFinite),"invalid motion series");
+ const inside=d.slice(5,176).sort((a,b)=>a-b),med=inside[Math.floor(inside.length/2)],p95=inside[Math.floor(inside.length*.95)];
+ const edgeIndices=[1,2,3,4,176,177,178,179],edges=edgeIndices.map(n=>({frame:n,mad:round(d[n])}));
+ const staticFrames=d.slice(1).filter(x=>x<.1).length;
+ const edgeStatic=edges.filter(x=>x.mad<.1).length;
+ const jumps=edgeIndices.filter(n=>!jumpGate(d[n],[p95,med]));
+ return {interior_median:round(med),interior_p95:round(p95),static_frames:staticFrames,edge_static_frames:edgeStatic,edge_samples:edges,edge_jump_frames:jumps,pass:med>.1&&edgeStatic===0&&jumps.length===0};
+}
+function transformThumb(a,mode){
+ const out=new Uint8Array(a.length);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  const xx=mode==="flip_x"||mode==="flip_xy"?THUMB_W-1-x:x;
+  const yy=mode==="flip_y"||mode==="flip_xy"?THUMB_H-1-y:y;
+  out[y*THUMB_W+x]=a[yy*THUMB_W+xx];
+ }return out;
+}
+function assess(inputs,outputs){
+ check(inputs.length===SEG&&outputs.length===SEG,"180 thumbnails required");
+ const frames=outputs.map((o,j)=>{
+  const a=inputs[j],statsIn=visualStats(a),statsOut=visualStats(o);
+  const modes=["identity","flip_x","flip_y","flip_xy"].map(mode=>({mode,mad:round(mad(a,transformThumb(o,mode)))}));
+  const local=[];for(let k=Math.max(0,j-2);k<=Math.min(SEG-1,j+2);k++)local.push({frame:k,mad:round(mad(inputs[k],o))});
+  const best=Math.min(...local.map(x=>x.mad)),nearest=local.find(x=>x.mad===best).frame;
+  const inMad=j?mad(inputs[j-1],a):null,outMad=j?mad(outputs[j-1],o):null;
+  const ratio=j&&inMad>0?outMad/inMad:null;
+  return {frame:j,same_timestamp_mad:modes[0].mad,nearest_local_input_frame:nearest,unique_nearest:local.filter(x=>x.mad===best).length===1,orientation_candidates:modes,mean_input:round(statsIn.mean),mean_output:round(statsOut.mean),sd_input:round(statsIn.sd),sd_output:round(statsOut.sd),input_adjacent_mad:j?round(inMad):null,output_adjacent_mad:j?round(outMad):null,motion_ratio:ratio===null?null:round(ratio)};
+ });
+ const inputSeries=frames.map(x=>x.input_adjacent_mad),outputSeries=frames.map(x=>x.output_adjacent_mad);
+ const inputMotion=summarizeMotion(inputSeries),outputMotion=summarizeMotion(outputSeries);
+ const inputNormal=inputMotion.pass&&inputMotion.static_frames===0;
+ const outputNormal=outputMotion.pass&&outputMotion.static_frames===0;
+ const ratioFailures=frames.slice(1).filter(x=>x.motion_ratio===null||x.motion_ratio<.5||x.motion_ratio>1.5).map(x=>x.frame);
+ const alignmentFailures=frames.filter(x=>x.nearest_local_input_frame!==x.frame||!x.unique_nearest||x.same_timestamp_mad>8||x.sd_output<=2||x.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<x.same_timestamp_mad)).map(x=>x.frame);
+ return {frames,input_motion:inputMotion,output_motion:outputMotion,ratio_failures:ratioFailures,alignment_failures:alignmentFailures,input_motion_normal:inputNormal,output_motion_normal:outputNormal,same_time_alignment_pass:alignmentFailures.length===0,status:inputNormal&&outputNormal&&ratioFailures.length===0&&alignmentFailures.length===0?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",qualification:"180F local +/-2 input alignment; 128x72 luminance, different reduction kernels; independent exported MP4 and aesthetic/color review required"};
+}
+
+function thumb(source){
+ const q=document.createElement("canvas");q.width=THUMB_W;q.height=THUMB_H;
+ const ctx=q.getContext("2d",{willReadFrequently:true});ctx.drawImage(source,0,0,THUMB_W,THUMB_H);
+ const p=ctx.getImageData(0,0,THUMB_W,THUMB_H).data,a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let i=0;i<a.length;i++){const k=i*4;a[i]=Math.round(.299*p[k]+.587*p[k+1]+.114*p[k+2]);}
+ q.width=1;q.height=1;return a;
+}
+function mad(a,b){check(a?.length===THUMB_W*THUMB_H&&b?.length===a.length,"missing visual thumbnail");let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);return sum/a.length;}
+function visualStats(a){let sum=0,sq=0;for(const x of a){sum+=x;sq+=x*x;}const mean=sum/a.length;return {mean,sd:Math.sqrt(Math.max(0,sq/a.length-mean*mean))};}
+const round=x=>Number(x.toFixed(3));
+function jumpGate(d,neighbors){return d<=Math.max(8,2.5*Math.max(...neighbors));}
+
+function boundaryGate(d,left,right){return d>=.1&&jumpGate(d,[left,right]);}
+function compactAssessment(q){return {status:q.status,input_motion:q.input_motion,output_motion:q.output_motion,ratio_failures:q.ratio_failures,alignment_failures:q.alignment_failures,max_same_timestamp_mad:Math.max(...q.frames.map(x=>x.same_timestamp_mad))};}
+function audioEdit(bytes){
+ const d=new DataView(bytes),four=p=>String.fromCharCode(...new Uint8Array(bytes,p,4)),u=p=>d.getUint32(p),i=p=>d.getInt32(p);
+ const u64=p=>{const v=Number(d.getBigUint64(p));check(Number.isSafeInteger(v),"box integer overflow");return v;};
+ const i64=p=>{const v=Number(d.getBigInt64(p));check(Number.isSafeInteger(v),"edit integer overflow");return v;};
+ function boxes(start,end){const out=[];for(let p=start;p<end;){check(end-p>=8,"truncated MP4 box");let n=u(p),h=8;if(n===1){check(end-p>=16,"truncated extended box");n=u64(p+8);h=16;}else if(n===0)n=end-p;check(n>=h&&p+n<=end,"invalid MP4 box bounds");out.push({type:four(p+4),start:p+h,end:p+n});p+=n;}return out;}
+ function children(b){return boxes(b.start,b.end);}
+ function one(list,type){const x=list.filter(b=>b.type===type);check(x.length===1,"missing/ambiguous "+type);return x[0];}
+ function scale(b){const v=d.getUint8(b.start);check(v===0||v===1,"unsupported header version");const p=b.start+(v===1?20:12);check(p+4<=b.end,"truncated timescale");const n=u(p);check(n>0,"invalid timescale");return n;}
+ const moov=one(boxes(0,bytes.byteLength),"moov"),mc=children(moov),movie=scale(one(mc,"mvhd"));const tracks=mc.filter(b=>b.type==="trak").map(t=>{const c=children(t),md=children(one(c,"mdia")),h=one(md,"hdlr");check(h.start+12<=h.end,"truncated handler");return {c,md,type:four(h.start+8)};});
+ const aud=tracks.filter(t=>t.type==="soun");check(aud.length===1,"audio track identity");
+ const media=scale(one(aud[0].md,"mdhd")),ed=aud[0].c.filter(b=>b.type==="edts");
+ if(!ed.length)return {present:false,movie_timescale:movie,media_timescale:media,entries:[]};
+ check(ed.length===1,"multiple edit boxes");const e=one(children(ed[0]),"elst"),v=d.getUint8(e.start);check(v===0||v===1,"unsupported edit version");check(e.start+8<=e.end,"truncated elst");
+ const n=u(e.start+4),stride=v===1?20:12;check(n<=8&&e.start+8+n*stride===e.end,"edit entry size");const entries=[];
+ for(let j=0;j<n;j++){const p=e.start+8+j*stride,seg=v===1?u64(p):u(p),mt=v===1?i64(p+8):i(p+4),rate=i(p+(v===1?16:8))/65536;entries.push({duration_s:seg/movie,media_time_s:mt===-1?null:mt/media,media_rate:rate});}
+ return {present:true,movie_timescale:movie,media_timescale:media,entries};
+}
+function presentationCheck(edit,pFirst,pEnd,dFirst,dEnd){
+ const near=(x,y,t)=>Number.isFinite(x)&&Math.abs(x-y)<=t;
+ const raw=Number.isFinite(pFirst)&&Number.isFinite(dFirst)&&pFirst<=.05&&dFirst<=.05&&near(pEnd,D,.1)&&near(dEnd,D,.1);
+ if(!raw)return false;
+ if(pFirst<-.0001||dFirst<-.0001){
+  if(!edit.present||edit.entries.length!==1)return false;
+  const e=edit.entries[0];
+  return e.media_rate===1&&e.media_time_s>0&&near(-pFirst,e.media_time_s,.002)&&near(-dFirst,e.media_time_s,.002)&&near(e.duration_s,D,.1)&&dEnd>=D-1/SR;
+ }
+ return !edit.present&&near(pFirst,0,.05)&&near(dFirst,0,.05);
+}
+const sha256=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+function dbOpen(){return deadline(new Promise((resolve,reject)=>{const r=indexedDB.open(DBNAME,1);r.onupgradeneeded=()=>r.result.createObjectStore("segments",{keyPath:"id"});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error("IndexedDB blocked"));}),15000,"checkpoint open");}
+async function dbOp(mode,fn){
+ const db=await dbOpen();try{return await deadline(new Promise((resolve,reject)=>{const tx=db.transaction("segments",mode);let req;try{req=fn(tx.objectStore("segments"));}catch(e){tx.abort();reject(e);return;}tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error||req.error);tx.onabort=()=>reject(tx.error||Error("checkpoint transaction aborted"));}),20000,"checkpoint transaction");}finally{db.close();}
+}
+const getPart=id=>dbOp("readonly",o=>o.get(id));
+const putPart=rec=>dbOp("readwrite",o=>o.add(rec));
+const keys=()=>dbOp("readonly",o=>o.getAllKeys());
+async function refreshSaved(){try{const k=await keys();$("saved").textContent="保存区間："+k.length+" / "+PARTS+"（再開時にSHA検証）";}catch(e){$("saved").textContent="保存領域エラー："+String(e);}}
+function frameIndex(t,start){const x=(t-start)*FPS,n=Math.round(x);check(Math.abs(x-n)<0.015&&n>=0&&n<SEG,"off-grid segment timestamp: "+t);return n;}
+function validRecord(r,id){return r?.id===id&&r.recipe===RECIPE&&r.identity===IDENTITY&&r.start===id*SEG&&r.count===SEG&&r.blob instanceof Blob&&r.blob.size===r.bytes&&r.bytes>1024&&r.bytes<=MAX_PART&&/^[0-9a-f]{64}$/.test(r.sha256);}
+async function configSignature(c){
+ check(c&&c.description&&c.codec&&c.codedWidth===W&&c.codedHeight===H,"missing AVC decoder config");
+ const desc=c.description instanceof ArrayBuffer?new Uint8Array(c.description):new Uint8Array(c.description.buffer,c.description.byteOffset,c.description.byteLength);
+ return JSON.stringify([c.codec,c.codedWidth,c.codedHeight,c.displayAspectWidth??null,c.displayAspectHeight??null,c.colorSpace?.primaries??null,c.colorSpace?.transfer??null,c.colorSpace?.matrix??null,c.colorSpace?.fullRange??null,await sha256(new Blob([desc]))]);
+}
+
+async function inspectPart(m,r,id,guard){
+ check(validRecord(r,id),"invalid checkpoint "+id);check(await sha256(r.blob)===r.sha256,"checkpoint SHA mismatch "+id);
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack();check(v&&!(await input.getPrimaryAudioTrack()),"segment track mismatch");
+  const sig=await configSignature(await v.getDecoderConfig());
+  check(await v.getCodec()==="avc"&&await v.getDisplayWidth()===W&&await v.getDisplayHeight()===H,"segment resolution/codec");
+  check(Math.abs(await v.computeDuration()-SEGSEC)<.005,"segment duration");
+  const first=await v.getFirstTimestamp();check(Math.abs(first)<.002,"segment first PTS");
+  const hashes=[],seen=new Set();let packets=0;
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&Math.abs(p.duration-1/FPS)<.002,"segment PTS");
+   if(!packets)check(n===0&&p.type==="key","segment first keyframe");
+   seen.add(n);hashes[n]=await hashBytes(p.data);packets++;
+  }
+  check(packets===SEG&&seen.size===SEG,"segment packet count");
+  if(r.packet_hashes)check(r.packet_hashes.length===SEG&&hashes.every((x,i)=>x===r.packet_hashes[i]),"checkpoint packet hashes differ");
+  const frames=[],diffs=[null],sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  for await(const f of sink.canvases()){
+   guard();const n=frames.length;check(n<SEG&&Math.abs(f.timestamp-first-n/FPS)<.002,"segment decoded PTS");
+   const x=thumb(f.canvas),st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"segment invalid pixels");
+   if(n)diffs.push(mad(frames[n-1],x));frames.push(x);
+  }
+  check(frames.length===SEG,"segment decoded count");
+  const motion=summarizeMotion(diffs);check(motion.pass&&motion.static_frames===0,"segment motion gate "+id);
+  const jumps=diffs.flatMap((x,k)=>k>1&&k<SEG-1&&!jumpGate(x,[diffs[k-1],diffs[k+1]])?[k]:[]);check(!jumps.length,"segment internal jump");
+  let assessment;
+  check(r.imported!==true,"foreign scene import prohibited");
+  {
+   check(Array.isArray(r.raw)&&r.raw.length===SEG,"missing raw QA thumbnails");
+   const q=assess(r.raw,frames);check(q.status==="TECHNICAL_CANDIDATE","input/output segment QA "+id+" "+JSON.stringify(compactAssessment(q)));assessment=compactAssessment(q);
+  }
+  return {frames,hashes,meta:{id,frames:SEG,bytes:r.bytes,sha256:r.sha256,config_signature:sig,visual:assessment}};
+ }finally{input.dispose();}
+}
+async function muxPart(m,r,id,expected,guard,consume){
+ check(validRecord(r,id)&&r.sha256===expected.meta.sha256&&await sha256(r.blob)===r.sha256,"mux source changed");
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),cfg=await v.getDecoderConfig(),sig=await configSignature(cfg),first=await v.getFirstTimestamp();
+  check(sig===expected.meta.config_signature,"mux config changed");let count=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&await hashBytes(p.data)===expected.hashes[n],"mux packet changed");seen.add(n);
+   await consume(p,n,cfg,sig,count++);
+  }check(count===SEG,"mux segment count");
+ }finally{input.dispose();}
+}
+async function persist(rec,q){
+ rec.packet_hashes=q.hashes;await putPart(rec);const r=await getPart(rec.id);
+ check(validRecord(r,rec.id)&&await sha256(r.blob)===rec.sha256&&JSON.stringify(r.packet_hashes)===JSON.stringify(q.hashes),"checkpoint readback mismatch");
+}
+function directCaptureAdapter(ctx){const {T,renderer,device,post,pose,camera,focusDepth}=ctx;return {async diagnose(guard,data,consume,id){
+    const prior=renderer.getRenderTarget(),bytes=W*H*4;
+    check(W*4%256===0&&bytes===8294400,"unexpected diagnostic dimensions");
+    let rt=null,staging=null;
+    const frames=[],details=[],renderTimes=[],readTimes=[];data.gpu.frames=details;
+    try{
+      rt=new T.RenderTarget(W,H,{format:T.RGBAFormat,type:T.UnsignedByteType,colorSpace:T.NoColorSpace,depthBuffer:false,stencilBuffer:false,samples:0,generateMipmaps:false});
+      staging=device.createBuffer({size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+      renderer.setRenderTarget(rt);
+      for(let j=0;j<SEG;j++){
+        guard();check(!ctx.lost&&!ctx.gpuError,ctx.gpuError||"device lost");
+        const index=id*SEG+j;let t=performance.now();pose(index);
+        post.render();await deadline(renderer.waitForGPU(),20000,"diagnostic GPU completion");renderTimes.push(performance.now()-t);guard();t=performance.now();
+        const tex=renderer.backend.get(rt.texture).texture;
+        check(tex&&tex.format==="rgba8unorm"&&tex.sampleCount===1&&(tex.usage&GPUTextureUsage.COPY_SRC)&&tex.width===W&&tex.height===H,"unexpected GPU target format/usage");
+        const cmd=device.createCommandEncoder();
+        cmd.copyTextureToBuffer({texture:tex},{buffer:staging,bytesPerRow:W*4,rowsPerImage:H},{width:W,height:H,depthOrArrayLayers:1});
+        device.queue.submit([cmd.finish()]);
+        try{
+          await deadline(staging.mapAsync(GPUMapMode.READ),20000,"diagnostic map");readTimes.push(performance.now()-t);guard();
+          const pixels=new Uint8Array(staging.getMappedRange());
+          const small=reduceRGBA(pixels),stats=visualStats(small);
+          const hash=await deadline(hashBytes(pixels),10000,"GPU pixel SHA");guard();
+          details.push({local_frame:j,global_frame:index,timestamp_s:index/FPS,camera:camera.position.toArray(),focus_depth:focusDepth.value,sha256:hash,mean:round(stats.mean),sd:round(stats.sd),adjacent_mad:j?round(mad(frames[j-1],small)):null});
+          frames.push(small);
+          if(consume)await consume(pixels,small,j,hash);guard();
+        }finally{if(staging.mapState==="mapped")staging.unmap();}
+        check(!ctx.lost&&!ctx.gpuError,ctx.gpuError||"device lost");
+        $("status").textContent="区間 "+(id+1)+"/5｜"+(id*SEG+j+1)+" / 900F";if(j%10===0){await delay();}if(j>0&&j%30===0)await new Promise(r=>setTimeout(r,80));
+      }
+      const motion=details.slice(1).map(x=>x.adjacent_mad);
+      return {status:details.every(x=>x.sd>2)&&motion.every(x=>x>=.1)?"NORMAL":"ABNORMAL",frames:details,copy_bytes:bytes*SEG,render_timing:summary(renderTimes),readback_timing:summary(readTimes),explicit_target_and_staging_bytes:bytes*2,format:"rgba8unorm",qualification:"separate render target; not direct canvas equivalence"};
+    }finally{renderer.setRenderTarget(prior);if(staging){if(staging.mapState==="mapped")staging.unmap();staging.destroy();}rt?.dispose();}
+  }};}
+function summary(a){if(!a?.length)return null;const b=[...a].sort((x,y)=>x-y);return {mean_ms:Number((a.reduce((s,x)=>s+x,0)/a.length).toFixed(2)),p95_ms:Number(b[Math.min(b.length-1,Math.floor(b.length*.95))].toFixed(2)),max_ms:Number(b[b.length-1].toFixed(2))};}
+
+async function renderPart(m,id,data,guard){
+ generationGate();
+ let gpu=null,output=null,finalized=false;const enc=[],raw=[];const began=performance.now();
+ const tmp={gpu:{}};
+ try{
+  guard();data.stage="gpu_init";gpu=await gpuSetup();data.backend=gpu.backend;data.effects=gpu.effects;
+  data.stage="precompile";data.preflight=await gpu.preflight(id*SEG);guard();
+  // Match the validated V11j warmup before encoder initialization.
+  await gpu.frame(id*SEG);await delay();await gpu.frame(id*SEG);guard();
+  data.stage="segment_encode_init";
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.VideoSampleSource({codec:"avc",fullCodecString:"avc1.640028",bitrate:8000000,keyFrameInterval:1,latencyMode:"quality"});
+  output.addVideoTrack(vs,{frameRate:FPS});await deadline(output.start(),20000,"segment start");
+  data.stage="direct_render";
+  const metrics=await gpu.diagnose(guard,tmp,async(pixels,small,j,hash)=>{
+   guard();check(j===raw.length&&pixels.length===FRAME_BYTES,"input order or size");
+   const t=performance.now(),sample=new m.VideoSample(pixels,{format:"RGBA",codedWidth:W,codedHeight:H,timestamp:j/FPS,duration:1/FPS});
+   try{await deadline(vs.add(sample,j===0?{keyFrame:true}:undefined),20000,"direct encode");raw.push(small);}finally{sample.close();}
+   enc.push(performance.now()-t);data.submitted=id*SEG+j+1;progress.value=data.submitted;
+  },id);
+  check(metrics.status==="NORMAL"&&raw.length===SEG,"GPU motion gate");
+  gpu.destroy();gpu=null;guard();data.stage="segment_finalize";await deadline(output.finalize(),30000,"segment finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength>1024&&target.buffer.byteLength<=MAX_PART,"segment memory cap");
+  const part=new Blob([target.buffer],{type:"video/mp4"});
+  const rec={id,recipe:RECIPE,identity:IDENTITY,start:id*SEG,count:SEG,blob:part,bytes:part.size,sha256:await sha256(part),render_timing:metrics.render_timing,readback_timing:metrics.readback_timing,encode_timing:summary(enc),elapsed_s:round((performance.now()-began)/1000),raw};
+  data.stage="checkpoint_verify";const q=await inspectPart(m,rec,id,guard);guard();data.stage="checkpoint_commit";await persist(rec,q);
+  return {q,record:{...q.meta,render_timing:rec.render_timing,readback_timing:rec.readback_timing,encode_timing:rec.encode_timing,elapsed_s:rec.elapsed_s,source:"new",persisted_readback:true}};
+ }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel segment");}catch{}}if(gpu)gpu.destroy();}
+}
+async function assemble(m,data,guard,verified){
+ generationGate();
+ let output=null,finalized=false;
+ try{
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.EncodedVideoPacketSource("avc"),as=new m.AudioBufferSource({codec:"aac",bitrate:192000});
+  output.addVideoTrack(vs,{frameRate:FPS});output.addAudioTrack(as);await deadline(output.start(),20000,"assembly start");
+  let signature=null,sequence=0,audioSec=0;
+  for(let id=0;id<PARTS;id++){
+   guard();const rec=await getPart(id);
+   await muxPart(m,rec,id,verified[id],guard,async(pkt,n,cfg,sig,count)=>{
+    if(signature===null)signature=sig;
+    check(sig===signature,"AVC configuration differs across segments; safe stop, no remux");
+    await deadline(vs.add(pkt.clone({timestamp:(id*SEG+n)/FPS,duration:1/FPS,sequenceNumber:sequence++}),count===0?{decoderConfig:cfg}:undefined),20000,"packet mux");
+    // Interleave audio in approximately one-second steps to bound mux buffering.
+    while(audioSec<D&&audioSec<=Math.floor((id*SEG+count)/FPS)){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+   });
+   data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;show(data);await delay();
+  }
+  while(audioSec<D){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+  check(sequence===N&&audioSec===D,"assembly count mismatch");guard();
+  await deadline(output.finalize(),45000,"assembly finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength<=MAX_FINAL&&target.buffer.byteLength>1024,"final memory cap or empty MP4");
+  data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;
+  return new Blob([target.buffer],{type:"video/mp4"});
+ }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel assembly");}catch{}}}
+}
+async function probeFile(m,b,verified,guard){
+ const input=new m.Input({source:new m.BlobSource(b),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),a=await input.getPrimaryAudioTrack();check(v&&a,"missing video/audio");
+  const [width,height,vc,ac,vd,ad,du,mime,first]=await Promise.all([v.getDisplayWidth(),v.getDisplayHeight(),v.getCodec(),a.getCodec(),v.computeDuration(),a.computeDuration(),input.computeDuration(),input.getMimeType(),v.getFirstTimestamp()]);
+  check(width===W&&height===H&&vc==="avc"&&ac==="aac"&&Math.abs(first)<.002,"final stream metadata mismatch");
+  check(await configSignature(await v.getDecoderConfig())===verified[0].meta.config_signature,"final AVC configuration mismatch");
+  let packets=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=Math.round((p.timestamp-first)*FPS);
+   check(n>=0&&n<N&&!seen.has(n)&&Math.abs(p.timestamp-first-n/FPS)<.002&&Math.abs(p.duration-1/FPS)<.002,"final video PTS grid");
+   check(await hashBytes(p.data)===verified[Math.floor(n/SEG)].hashes[n%SEG],"final packet SHA mismatch F"+n);
+   if(n%SEG===0)check(p.type==="key","final boundary keyframe missing");
+   seen.add(n);packets++;
+  }
+  check(packets===N&&seen.size===N,"final video packet count");
+  const sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  const changes=[null],diffs=[];let n=0,prev=null;
+  for await(const f of sink.canvases()){
+   guard();check(n<N&&Math.abs(f.timestamp-first-n/FPS)<.002,"final decoded PTS "+n);
+   const x=thumb(f.canvas),d=mad(x,verified[Math.floor(n/SEG)].frames[n%SEG]);
+   diffs.push(d);check(d<=1,"final frame differs from verified segment F"+n);
+   const st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"final invalid pixels F"+n);
+   if(prev)changes.push(mad(prev,x));prev=x;n++;
+  }
+  check(n===N,"final decoded count");
+  const boundaries=[];for(let id=1;id<PARTS;id++){const k=id*SEG;boundaries.push({frame:k,mad:round(changes[k]),left:round(changes[k-1]),right:round(changes[k+1]),pass:boundaryGate(changes[k],changes[k-1],changes[k+1])});}
+  const statics=changes.slice(1).filter(x=>x<.1).length;
+  const jumps=changes.flatMap((x,k)=>k>1&&k<N-1&&!jumpGate(x,[changes[k-1],changes[k+1]])?[k]:[]);
+  let audioPackets=0,apFirst=null,apEnd=null,maxPacketGap=0;
+  for await(const p of new m.EncodedPacketSink(a).packets()){
+   guard();if(apFirst===null)apFirst=p.timestamp;
+   if(apEnd!==null)maxPacketGap=Math.max(maxPacketGap,Math.abs(p.timestamp-apEnd));
+   apEnd=p.timestamp+p.duration;audioPackets++;
+  }
+  let samples=0,aFirst=null,aEnd=null,maxGap=0,rate=null,channels=null;
+  const meter=audioMeter(),edit=audioEdit(await b.arrayBuffer());
+  for await(const z of new m.AudioSampleSink(a).samples()){
+   try{
+    guard();if(aFirst===null)aFirst=z.timestamp;
+    if(aEnd!==null)maxGap=Math.max(maxGap,Math.abs(z.timestamp-aEnd));
+    aEnd=z.timestamp+z.duration;samples++;
+    const buf=z.toAudioBuffer();rate=buf.sampleRate;channels=buf.numberOfChannels;meterBlock(meter,buf,z.timestamp);
+   }finally{z.close();}
+  }
+  const wave=assessAudio(meter);
+  const checks={format:audioPackets>0&&samples>0&&rate===SR&&channels===2,raw_continuity:maxPacketGap<=.002&&maxGap<=.002,edit_presentation:presentationCheck(edit,apFirst,apEnd,aFirst,aEnd),pcm_coverage:wave.coverage_pass,real_pcm_alignment:wave.pass};
+  const audioPass=Object.values(checks).every(Boolean);
+  return {visual:{pass:statics===0&&jumps.length===0&&boundaries.every(x=>x.pass),decoded_frames:n,static_frames:statics,jump_frames:jumps,boundaries,max_segment_to_final_mad:round(Math.max(...diffs)),packet_hashes_verified:packets},audio:{pass:audioPass,packets:audioPackets,decoded_samples:samples,sample_rate:rate,channels,first_timestamp:aFirst,end_timestamp:aEnd,packet_first_timestamp:apFirst,packet_end_timestamp:apEnd,max_packet_gap_s:maxPacketGap,max_decoded_gap_s:maxGap,edit_list:edit,presentation_start_s:checks.edit_presentation?0:null,waveform:wave,checks},packets,audio_packets:audioPackets,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:packets/vd,mime,video_codec:vc,audio_codec:ac,avc:vc==="avc",aac:ac==="aac",bytes:b.size,sha256:await sha256(b)};
+ }finally{input.dispose();}
+}
+
+$("check").onclick=async()=>{if(active)return;active=true;$("check").disabled=true;const data={version:"V13",scope:"PREP_ONLY",status:"PARTIAL",generation_allowed:false,scene_ready:false,video_generated:false,image_rendered:false,checkpoint_written:false};
+ try{data.numeric=numericQA();check(data.numeric.pass,"numeric QA");if($("wav").files[0])data.audio=await readSource($("wav").files[0]);else data.audio={status:"FILE_SELECTION_PENDING"};
+ if($("ref").files[0]&&$("zip").files[0])data.art=await verifyArt($("ref").files[0],$("zip").files[0]);else data.art={status:"ASSET_BYTES_PENDING"};
+ if(navigator.storage?.estimate)data.storage=storageGate(await navigator.storage.estimate());else data.storage={pass:false,reason:"storage estimate unavailable"};
+ show(data);
+ const [T,M]=await deadline(Promise.all([import("three/webgpu"),import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm")]),30000,"dependency import");data.dependencies={three:T.REVISION,mediabunny:["Output","VideoSampleSource","VideoSample","EncodedVideoPacketSource","AudioBufferSource","AudioSampleSink","CanvasSink","Input","BlobSource","EncodedPacketSink","BufferTarget","Mp4OutputFormat"].every(k=>typeof M[k]==="function")};check(T.REVISION==="180"&&data.dependencies.mediabunny,"dependency mismatch");
+ if(navigator.gpu){const adapter=await deadline(navigator.gpu.requestAdapter(),15000,"GPU adapter");if(adapter){const device=await deadline(adapter.requestDevice(),15000,"GPU device");try{data.gpu={device_init:true,max_texture_2d:device.limits.maxTextureDimension2D,max_buffer_size:device.limits.maxBufferSize,rendered:false};}finally{device.destroy();}}else data.gpu={device_init:false};}else data.gpu={device_init:false};
+ data.status="PREFLIGHT_ONLY_SCENE_BLOCKED";}catch(e){data.error=String(e);data.status="BLOCK";}finally{show(data);$("status").textContent=data.status;active=false;$("check").disabled=false;}
+};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);}catch{report.select();}};
+show({version:"V13",status:"PREFLIGHT_ONLY_SCENE_BLOCKED",generation_allowed:false,numeric:numericQA()});
+</script></body></html>
