@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V07</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style></head><body><main><h1>iPhone独立MV制作 V07</h1><p>6秒・1080p・30fps・180フレーム。Three.js r180 / WebGPUで金属・ガラス・光・影・カメラ移動を描画し、H.264/AAC MP4を端末内で作ります。実曲・原本・外部GPUは使用しません。</p><section><h2>実映像試験</h2><p>Safariを前面にしたまま実行してください。発熱したら停止。自動再試行なし、上限5分。音声は小音量の短いテスト音です。</p><button id="go">動画生成開始（6秒）</button><button id="stop" class="secondary" disabled>停止</button><div id="stage"></div><progress id="progress" max="180" value="0"></progress><p id="status" role="status">未実行</p><video id="preview" controls playsinline preload="metadata" hidden></video><a id="save" class="save" download="suilemo_mobile_v07_test.mp4" hidden>MP4を保存</a><button id="share" class="secondary" hidden>共有・ファイルに保存</button></section><section><h2>検査結果</h2><button id="copy" class="secondary">結果をコピー</button><textarea id="report" readonly aria-label="検査結果"></textarea><small>Three.js (MIT)・Mediabunny (MPL-2.0) の固定バージョン取得のみCDNに接続します。制作素材や結果を送信しません。再生・聴感・実機安定性は目視確認が必要です。</small></section><p><a href="../">V04 接続診断へ戻る</a></p></main><script>
+"use strict";
+const W=1920,H=1080,FPS=30,N=180,D=6,SR=48000,ROW=W*4;
+const $=id=>document.getElementById(id);
+const go=$("go"),stop=$("stop"),report=$("report"),video=$("preview"),progress=$("progress");
+let active=false,aborted=false,blob=null,url=null;
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{let timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function evaluate(m){return m.packets===N&&m.audio_packets>0&&m.width===W&&m.height===H&&Math.abs(m.duration-D)<=0.10&&Math.abs(m.video_duration-D)<=0.05&&Math.abs(m.audio_duration-D)<=0.10&&m.avc&&m.aac&&m.bytes>1024;}
+async function gpuSetup(){
+ check(window.isSecureContext&&navigator.gpu,"WebGPU unavailable");
+ const T=await deadline(import("https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js"),30000,"Three.js import");
+ check(T.REVISION==="180","unexpected Three.js revision");
+ const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
+ canvas.style.cssText="display:block;width:100%;height:auto;border-radius:8px";
+ $("stage").appendChild(canvas);
+ let renderer=null,scene=null,env=null,lost=false,device=null,uncaptured=null;
+ const cleanup=()=>{try{if(scene){const geos=new Set(),mats=new Set();scene.traverse(o=>{if(o.geometry)geos.add(o.geometry);if(o.material){for(const m of [].concat(o.material))mats.add(m);}});scene.environment=null;geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());scene.clear();}if(env)env.dispose();if(renderer)renderer.dispose();}finally{try{if(device){if(uncaptured)device.removeEventListener("uncapturederror",uncaptured);device.destroy();}}finally{canvas.remove();canvas.width=1;canvas.height=1;}}};
+ try{
+  renderer=new T.WebGPURenderer({canvas,alpha:false,antialias:true,powerPreference:"high-performance"});
+  renderer.setPixelRatio(1);renderer.setSize(W,H,false);
+  renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
+  renderer.outputColorSpace=T.SRGBColorSpace;renderer.shadowMap.enabled=true;
+  await deadline(renderer.init(),20000,"Three.js WebGPU init");
+  check(renderer.backend?.isWebGPUBackend===true,"WebGPU fallback is not permitted");
+  device=renderer.backend.device;check(device,"GPU device missing");
+  device.lost.then(()=>{lost=true;});
+  let gpuError="";uncaptured=e=>{gpuError=e.error?.message||"GPU error";};device.addEventListener("uncapturederror",uncaptured);
+  scene=new T.Scene();scene.background=new T.Color(0x101722);scene.fog=new T.FogExp2(0x101722,0.032);
+  // Procedural HDR lighting map: no downloaded image, no original asset.
+  const ew=256,eh=128,px=new Float32Array(ew*eh*4);
+  for(let y=0;y<eh;y++)for(let x=0;x<ew;x++){
+    const u=x/ew,v=y/eh,i=(y*ew+x)*4;
+    const panel=(u>0.12&&u<0.30&&v>0.15&&v<0.61)?5.0:0;
+    const strip=(u>0.53&&u<0.59&&v>0.10&&v<0.72)?3.0:0;
+    const top=v<0.19?1.3:0;
+    px[i]=0.055+panel+strip*0.45+top;
+    px[i+1]=0.075+panel*0.93+strip*0.70+top;
+    px[i+2]=0.11+panel*0.78+strip+top;px[i+3]=1;
+  }
+  const half=new Uint16Array(px.length);
+  for(let i=0;i<px.length;i++)half[i]=T.DataUtils.toHalfFloat(px[i]);
+  env=new T.DataTexture(half,ew,eh,T.RGBAFormat,T.HalfFloatType);
+  env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.LinearSRGBColorSpace;env.minFilter=T.LinearFilter;env.magFilter=T.LinearFilter;env.needsUpdate=true;
+  scene.environment=env;scene.environmentIntensity=1.0;
+  const material=(color,metalness,roughness)=>new T.MeshStandardMaterial({color,metalness,roughness});
+  const steel=material(0xb6c5d8,0.98,0.19),dark=material(0x263141,0.64,0.34),gold=material(0xe5ba72,0.88,0.22),floorMat=material(0x222a36,0.26,0.34);
+  const glass=new T.MeshPhysicalMaterial({color:0xe1f6ff,metalness:0,roughness:0.09,transmission:0.94,thickness:0.60,ior:1.46,attenuationColor:new T.Color(0x91c9e6),attenuationDistance:3,clearcoat:0.65,clearcoatRoughness:0.08});
+  const whiteGlow=new T.MeshBasicMaterial({color:0xeaf4ff}),blueGlow=new T.MeshBasicMaterial({color:0x4c9adf});
+  function mesh(geo,mat,x,y,z,parent=scene){const m=new T.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=mat!==glass&&mat!==whiteGlow&&mat!==blueGlow;m.receiveShadow=mat!==glass;parent.add(m);return m;}
+  const floor=mesh(new T.PlaneGeometry(200,200),floorMat,0,0,0);floor.rotation.x=-Math.PI/2;floor.castShadow=false;
+  const pedestal=mesh(new T.CylinderGeometry(2.0,2.18,0.26,96),dark,0,0.13,0);
+  mesh(new T.CylinderGeometry(1.98,1.98,0.045,96),steel,0,0.285,0);
+  const object=new T.Group();object.position.y=1.62;scene.add(object);
+  const ring=mesh(new T.TorusGeometry(1.32,0.095,24,144),steel,0,0,0,object);ring.rotation.set(0.20,0.18,-0.18);
+  const inner=mesh(new T.TorusGeometry(1.02,0.043,16,112),gold,0,0,0,object);inner.rotation.set(0.62,0.18,0.35);
+  const orb=mesh(new T.SphereGeometry(0.68,64,48),glass,0,0,0,object);
+  mesh(new T.IcosahedronGeometry(0.36,2),gold,0,0,0,object);
+  const satellite=new T.Group();object.add(satellite);mesh(new T.SphereGeometry(0.22,40,28),steel,1.32,0,0,satellite);mesh(new T.SphereGeometry(0.16,32,24),gold,-1.32,0,0,satellite);
+  // Layered pillars and light strips define depth and reflections.
+  const pillarGeo=new T.BoxGeometry(0.45,4.7,0.65),stripGeo=new T.BoxGeometry(0.035,3.65,0.035);
+  for(let i=0;i<6;i++){const x=(i%2===0?-1:1)*(2.8+Math.floor(i/2)*0.14),z=-2.3-Math.floor(i/2)*2.2;mesh(pillarGeo,dark,x,2.35,z);mesh(stripGeo,i%2===0?whiteGlow:blueGlow,x+(x<0?0.20:-0.20),2.25,z+0.35);}
+  const hemi=new T.HemisphereLight(0xcbdcff,0x22252e,0.7);scene.add(hemi);
+  const key=new T.SpotLight(0xffe2bf,95,35,Math.PI/5,0.55,2);key.position.set(-3.7,6,4);key.target.position.set(0,1,0);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.bias=-0.0004;key.shadow.normalBias=0.025;scene.add(key,key.target);
+  const rim=new T.PointLight(0x75bfff,45,24,2);rim.position.set(3.8,3.7,-3.0);scene.add(rim);
+  const fill=new T.PointLight(0xe0ebff,18,20,2);fill.position.set(4,3.0,5);scene.add(fill);
+  const camera=new T.PerspectiveCamera(37,W/H,0.1,100);
+  function pose(index){const t=index/FPS,u=index/(N-1),a=-0.46+u*0.92;camera.position.set(6.7*Math.sin(a),2.75-0.35*u,6.7*Math.cos(a));camera.lookAt(0,1.48,0);ring.rotation.y=0.18+t*0.29;inner.rotation.x=0.62+t*0.37;satellite.rotation.z=t*0.6;orb.rotation.y=t*0.1;}
+  return {canvas,backend:"three-r180-webgpu",async frame(index){check(!lost&&!gpuError,gpuError||"GPU device lost");pose(index);renderer.render(scene,camera);await deadline(renderer.waitForGPU(),25000,"GPU completion");check(!lost&&!gpuError,gpuError||"GPU device lost");},destroy:cleanup};
+ }catch(e){cleanup();throw e;}
+}
+function audioBuffer(sec){
+ const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});
+ for(let ch=0;ch<2;ch++){const x=b.getChannelData(ch);for(let i=0;i<SR;i++){const t=i/SR;const env=Math.max(0,Math.min(1,t/0.015,(0.18-t)/0.04));x[i]=0.065*env*Math.sin(2*Math.PI*(sec%2?660:440)*t);}}
+ return b;
+}
+async function visualQA(m,v){
+ const sink=new m.CanvasSink(v,{width:64,height:36,fit:"contain"});
+ const q=document.createElement("canvas");q.width=64;q.height=36;const c=q.getContext("2d",{willReadFrequently:true});
+ const frames=[],stats=[];
+ for(const t of [0.1,2.9,5.7]){
+  const f=await sink.getCanvas(t);check(f?.canvas,"decoded frame missing at "+t);
+  c.drawImage(f.canvas,0,0,64,36);
+  const p=c.getImageData(0,0,64,36).data;const a=new Uint8Array(64*36);
+  let sum=0,sq=0;for(let i=0;i<a.length;i++){const k=i*4;a[i]=Math.round((p[k]+p[k+1]+p[k+2])/3);sum+=a[i];sq+=a[i]*a[i];}
+  const mean=sum/a.length,sd=Math.sqrt(Math.max(0,sq/a.length-mean*mean));frames.push(a);stats.push({t,mean:Number(mean.toFixed(2)),sd:Number(sd.toFixed(2))});
+ }
+ const diff=(a,b)=>a.reduce((s,x,i)=>s+Math.abs(x-b[i]),0)/a.length;
+ const changes=[diff(frames[0],frames[1]),diff(frames[1],frames[2])];
+ q.width=1;q.height=1;
+ return {samples:stats,mean_absolute_changes:changes.map(x=>Number(x.toFixed(2))),pass:stats.every(x=>x.mean>5&&x.mean<250&&x.sd>3)&&changes.every(x=>x>1)};
+}
+async function probeFile(m,b){
+ const input=new m.Input({source:new m.BlobSource(b),formats:m.ALL_FORMATS});
+ try{
+ const v=await input.getPrimaryVideoTrack(),a=await input.getPrimaryAudioTrack();check(v&&a,"missing video/audio track");
+ const [vs,as,du,vd,ad,mime]=await Promise.all([v.computePacketStats(),a.computePacketStats(),input.computeDuration(),v.computeDuration(),a.computeDuration(),input.getMimeType()]);
+ const width=typeof v.getDisplayWidth==="function"?await v.getDisplayWidth():v.displayWidth;
+ const height=typeof v.getDisplayHeight==="function"?await v.getDisplayHeight():v.displayHeight;
+ const vc=typeof v.getCodec==="function"?await v.getCodec():v.codec;
+ const ac=typeof a.getCodec==="function"?await a.getCodec():a.codec;
+ const visual=await visualQA(m,v);
+ const sha=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+ return {visual,packets:vs.packetCount,audio_packets:as.packetCount,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:vs.averagePacketRate,mime,video_codec:vc??null,audio_codec:ac??null,avc:vc==="avc"||/avc[13]/i.test(mime),aac:ac==="aac"||/mp4a/i.test(mime),bytes:b.size,sha256:sha};
+ }finally{input.dispose();}
+}
+function metadataCheck(){
+ return deadline(new Promise((res,rej)=>{
+ const ready=()=>res({width:video.videoWidth,height:video.videoHeight,duration:video.duration});
+ video.addEventListener("loadedmetadata",ready,{once:true});
+ video.addEventListener("error",()=>rej(Error("Safari MP4 metadata read failed")),{once:true});
+ video.src=url;video.load();
+ if(video.readyState>=1)ready();
+ }),15000,"Safari MP4 metadata");
+}
+function show(data){report.value=JSON.stringify(data,null,2);}
+async function run(){
+ if(active)return;active=true;aborted=false;go.disabled=true;stop.disabled=false;$("save").hidden=true;$("share").hidden=true;
+ if(url){video.removeAttribute("src");video.load();URL.revokeObjectURL(url);url=null;}blob=null;video.hidden=true;
+ const begin=performance.now();let gpu=null,output=null,submitted=0,finalized=false,encoded=0,audioPackets=0;
+ const data={version:"V07",scope:"synthetic_3d_trial",requested:{width:W,height:H,fps:FPS,frames:N,seconds:D,video:"H.264",audio:"AAC-LC test tone"},status:"RUNNING",media_generated:false,playback:"UNVERIFIED",submitted:0};
+ show(data);progress.value=0;
+ const guard=()=>{check(!aborted,"stopped by user");check(performance.now()-begin<300000,"5 minute processing limit");check(!document.hidden,"Safari moved to background");};
+ try{
+  $("status").textContent="Three.js / Mediabunny 取得・GPU準備中";
+  const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"Mediabunny");
+  for(const k of ["Output","Mp4OutputFormat","BufferTarget","CanvasSource","AudioBufferSource","Input","BlobSource"])check(typeof m[k]==="function","missing "+k);
+  guard();gpu=await gpuSetup();guard();
+  const canvas=gpu.canvas;data.backend=gpu.backend;data.explicit_full_frame_cpu_readback=false;data.render_ms=[];data.encode_ms=[];
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.CanvasSource(canvas,{codec:"avc",fullCodecString:"avc1.640028",bitrate:8000000,keyFrameInterval:1,latencyMode:"quality",onEncodedPacket:()=>{encoded++;}});
+  const as=new m.AudioBufferSource({codec:"aac",bitrate:192000,onEncodedPacket:()=>{audioPackets++;}});
+  output.addVideoTrack(vs,{frameRate:FPS});output.addAudioTrack(as);
+  await deadline(output.start(),20000,"MP4 start");
+  for(let i=0;i<N;i++){
+   guard();if(i%FPS===0)await deadline(as.add(audioBuffer(i/FPS)),20000,"audio add");
+   let t0=performance.now();await gpu.frame(i);data.render_ms.push(performance.now()-t0);guard();
+   t0=performance.now();await deadline(vs.add(i/FPS,1/FPS),20000,"video encode");data.encode_ms.push(performance.now()-t0);
+   submitted=i+1;progress.value=submitted;
+   $("status").textContent=submitted+" / "+N+" フレーム｜"+((performance.now()-begin)/1000).toFixed(1)+" 秒";
+   data.submitted=submitted;data.encoded_callbacks=encoded;
+   if(i%10===0){show(data);await delay();}if(i>0&&i%30===0){await new Promise(r=>setTimeout(r,80));guard();}
+  }
+  guard();$("status").textContent="MP4確定・ファイル検査中";
+  await deadline(output.finalize(),30000,"MP4 finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength>0,"empty MP4");
+  blob=new Blob([target.buffer],{type:"video/mp4"});data.media_generated=true;
+  gpu.destroy();gpu=null;data.file=await deadline(probeFile(m,blob),45000,"MP4 verification");
+  data.technical_pass=evaluate(data.file)&&data.file.visual.pass===true;
+  data.encoded_callbacks=encoded;data.audio_callbacks=audioPackets;
+  check(data.technical_pass,"MP4 technical QA mismatch");
+  url=URL.createObjectURL(blob);video.hidden=false;
+  data.safari_metadata=await metadataCheck();
+  check(data.safari_metadata.width===W&&data.safari_metadata.height===H&&Math.abs(data.safari_metadata.duration-D)<=0.10,"Safari metadata mismatch");
+  data.status="PASS_TECHNICAL_PLAYBACK_PENDING";data.playback="USER_CHECK_REQUIRED";
+  $("save").href=url;$("save").hidden=false;$("share").hidden=false;
+  $("status").textContent="MP4検査合格。再生ボタンで映像とテスト音を確認してください。";
+ }catch(e){data.status=aborted?"STOPPED":"FAIL";data.error=String(e);$("status").textContent=data.status+"｜"+data.error;if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel")}catch{}}}
+ finally{if(gpu){try{gpu.destroy();}catch(e){data.cleanup_error=String(e);}}const summarize=a=>{if(!a?.length)return null;const b=[...a].sort((x,y)=>x-y);return {mean_ms:Number((a.reduce((s,x)=>s+x,0)/a.length).toFixed(2)),p95_ms:Number(b[Math.min(b.length-1,Math.floor(b.length*0.95))].toFixed(2)),max_ms:Number(b[b.length-1].toFixed(2))};};data.render_timing=summarize(data.render_ms);data.encode_timing=summarize(data.encode_ms);delete data.render_ms;delete data.encode_ms;data.submitted=submitted;data.elapsed_s=Number(((performance.now()-begin)/1000).toFixed(2));show(data);active=false;go.disabled=false;stop.disabled=true;}
+}
+go.onclick=run;stop.onclick=()=>{aborted=true;$("status").textContent="停止要求中";};
+$("copy").onclick=async()=>{try{await navigator.clipboard.writeText(report.value);$("copy").textContent="コピー済み";}catch{report.focus();report.select();}};
+$("share").onclick=async()=>{try{const file=new File([blob],"suilemo_mobile_v07_test.mp4",{type:"video/mp4"});if(!navigator.canShare?.({files:[file]}))throw Error("共有非対応：MP4保存を使用");await navigator.share({files:[file]});}catch(e){if(e.name!=="AbortError")$("status").textContent=String(e);}};
+show({version:"V07",status:"NOT_RUN",media_generated:false});
+</script></body></html>
