@@ -99,7 +99,6 @@ function makeSession({scope,recipe,manifest,assets,pcm,render,notify,externalGua
   }catch(e){data.status='FAIL';data.error=String(e);data.can_resume_mux=!!(record&&verified);show(data);return {report:data}}
   finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,'cancel')}catch{}}permit=false;busy=false}
  }
- return Object.freeze({status:'PREPARED_NON_RENDER',scope,run,rendered:false,art:'REVIEW_REQUIRED'});
  // Extracted source functions, unchanged except no changes to their enclosing dependencies.
 const delay=()=>new Promise(r=>setTimeout(r,0));
 const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
@@ -288,4 +287,5 @@ async function verifyV12Final(m,b,q,guard){
  }finally{input.dispose()}
 }
 
+ return Object.freeze({status:'PREPARED_NON_RENDER',scope,run,rendered:false,art:'REVIEW_REQUIRED'});
 }
