@@ -64,7 +64,7 @@ function patchV11(s){
  s=once(s,'if(projectPayload){const result=await njStage.verify(T,scene,projectPayload);','if(projectPayload){check(preflightOnly===true&&typeof nativeAdapter==="function","V11 adapter only");const result=await njStage.prepareV11(T,L,scene,renderer,device,projectPayload,nativeAdapter);');
  s=once(s,'return {verify,bindNativeV10:(T,payload,adapter)=>adapter(T,payload,bindActor,arr)};\n})();',NATIVE_SOURCE+'\nreturn {verify,prepareV11,bindNativeV10:(T,payload,adapter)=>adapter(T,payload,bindActor,arr)};\n})();');
  const i=s.indexOf('$("njCheck").onclick=async()=>{');require(i>=0,'old handler not found');
- s=s.slice(0,i)+ 'window.v11Prepare=async(p,adapter)=>{let gpu;try{gpu=await gpuSetup(true,p,adapter);return {backend:gpu.backend,...gpu.stage}}finally{gpu?.destroy()}};\n'+s.slice(s.lastIndexOf('</script>'));
+ s=s.slice(0,i)+ 'window.v11Prepare=async(p,adapter)=>{let gpu;try{gpu=await gpuSetup(true,p,adapter);return {backend:gpu.backend,...gpu.stage}}finally{gpu?.destroy()}};\n'+s.slice(s.lastIndexOf('<\/script>'));
  return s;
 }
 
