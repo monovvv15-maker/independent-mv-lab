@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; connect-src https://cdn.jsdelivr.net; media-src blob:; img-src blob:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'"><title>iPhone MV V13 準備</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{margin:0;padding:20px;line-height:1.55}main{max-width:620px;margin:auto}h1{font-size:1.5rem}p{margin:.65rem 0}section{border:1px solid #8887;border-radius:12px;padding:16px;margin:16px 0}button,a.save{display:block;box-sizing:border-box;width:100%;min-height:48px;margin:8px 0;border:0;border-radius:9px;background:#2461b0;color:white;text-align:center;padding:12px;font:inherit;font-weight:600;text-decoration:none}button.secondary{background:#626b77}button:disabled{opacity:.55}progress,video,textarea{width:100%;box-sizing:border-box}textarea{min-height:220px;font:12px monospace;padding:8px}video{background:#111;border-radius:8px}small{display:block;color:inherit} [hidden]{display:none!important}a{color:inherit}
+</style><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/webgpu":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.webgpu.js","three/tsl":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.tsl.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}</script></head><body><main hidden aria-hidden="true"><h1>V13｜実装準備・非動画検査</h1><p>V13正式承認済み・30秒試作。原曲WAVを選択し、動画生成開始を押してください。現在の入力・容量・GPU等の安全確認を経て、5区間を連続制作・結合・検証します。Safariは前面のままにしてください。</p><section><h2>任意のローカル素材確認</h2><p>原曲WAV</p><input id="wav" type="file" accept=".wav,audio/wav"><p>V04参照JPEG</p><input id="ref" type="file" accept=".jpeg,.jpg,image/jpeg"><p>V04制作ZIP</p><input id="zip" type="file" accept=".zip"><button id="check">非動画プリフライト</button><p id="status">未実行</p><p id="saved">非動画検査では保存領域を作成しません</p><button id="diagnostic" class="secondary">第1区間の停止原因を診断（動画なし）</button><button id="go" disabled>動画生成開始・続きから（30秒）</button><button id="stop" disabled hidden>停止</button><div id="stage"></div><video id="preview" controls playsinline hidden></video><a id="save" class="save" download="suilemo_v13_real_music.mp4" hidden>MP4保存</a><button id="share" hidden>共有</button><progress id="progress" max="900" value="0" hidden></progress></section><section><button id="copy">検査結果コピー</button><textarea id="report" readonly></textarea></section></main><main><h1>SUSHI-JARO！｜V13実舞台接続検査</h1><p>非描画専用。原本を変更せず、既存WebGPU初期化と舞台GLBを接続します。動画・画像出力・チェックポイント書込みは禁止。</p><input type="file" id="njPayload" accept=".json,application/json"><button id="njCheck">舞台接続を確認（描画なし）</button><p id="njStatus">未実行</p><textarea id="njReport" readonly></textarea></main><script>"use strict";
+const W=1920,H=1080,FPS=30,N=900,D=30,SR=48000,ROW=W*4,SEG=180,PARTS=5,SEGSEC=6,MAX_PART=12*1024*1024,MAX_FINAL=60*1024*1024,FRAME_BYTES=W*H*4,THUMB_W=128,THUMB_H=72;
+const $=id=>document.getElementById(id);
+const progress=$("progress"),report=$("report"),go=$("go"),stop=$("stop"),video=$("preview");
+let aborted=false,blob=null,url=null,preflightOK=false;
+const check=(ok,msg)=>{if(!ok)throw Error(msg)};
+function evaluate(m){return m.packets===N&&m.audio_packets>0&&m.width===W&&m.height===H&&Math.abs(m.duration-D)<=.10&&Math.abs(m.video_duration-D)<=.05&&Math.abs(m.audio_duration-D)<=.10&&m.avc&&m.aac&&m.bytes>1024;}
+const delay=()=>new Promise(r=>setTimeout(r,0));
+const deadline=(p,ms,label)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(label+" timeout")),ms);Promise.resolve(p).then(v=>{clearTimeout(timer);resolve(v)},e=>{clearTimeout(timer);reject(e)})});
+function show(data){report.value=JSON.stringify(data,null,2);}
+
+const SOURCE_SHA="041eeecd59f2bbe8804e437a43bb41149abc3b2bb3b1c4c305745dad3d8c7b47",PCM_SHA="ab2a53e64226f541446c389595d893aa51f7cdc8257be8fd98355415e36104b7",REF_SHA="4366851d0e115206510343674ad913fc3ae2b2517c40d3f34b96fb98eed5a7b7",ZIP_SHA="ab8d37e939484f800744772acf9cace105a5c90c4987db6512facc8df0366273",DESIGN="V13-30s-V01";
+const DBNAME="suilemo-v13-real-music-30s-v1",RECIPE="v13-30s-v01-art-adapter",IDENTITY=[DESIGN,SOURCE_SHA,REF_SHA,ZIP_SHA].join(":");
+const GENERATION_ALLOWED=false,SCENE_READY=false;
+let sourcePCM=null,envelope=null,active=false;
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+function hermite(x,a,b,p,q,v,w){const d=(b-a)/FPS,z=clamp((x-a)/(b-a),0,1),z2=z*z,z3=z2*z;return (2*z3-3*z2+1)*p+(z3-2*z2+z)*d*v+(-2*z3+3*z2)*q+(z3-z2)*d*w;}
+const crossX=f=>.41*Math.tanh((f-413)/FPS),crossV=f=>.41/Math.cosh((f-413)/FPS)**2;
+function cameraAt(f){
+ check(Number.isFinite(f)&&f>=0&&f<=N,"global frame out of range");
+ let x,z,yaw;
+ if(f<324){x=hermite(f,0,324,-.8,crossX(324),0,crossV(324));z=hermite(f,0,324,-8,0,0,0);yaw=hermite(f,0,324,-8,0,0,0);}
+ else if(f<=459){x=crossX(f);z=0;yaw=0;}
+ else if(f<=598){x=hermite(f,459,598,crossX(459),.5,crossV(459),.03);z=hermite(f,459,598,0,.6,0,.10);yaw=hermite(f,459,598,0,3,0,.3);}
+ else{x=hermite(f,598,900,.5,.8,.03,.03);z=hermite(f,598,900,.6,2.4,.10,.18);yaw=hermite(f,598,900,3,9,.3,.6);}
+ return {x,y:0,z,yaw,pitch:0,roll:0,fov:2*Math.atan(540/1030)*180/Math.PI,near:.30};
+}
+function crossingAt(f){const u=(f-413)/FPS;return {camera:cameraAt(f),a:[1.38*u,.27+.20*Math.sin(u),5.6],b:[-1.38*u,.27*8.7/5.6-.20*Math.sin(u),8.7],heightA:.76,heightB:.76*8.7/5.6};}
+function railPoints(){const a=[],b=[];for(let j=0;j<37;j++){const x=-5.5+11*j/36;a.push([x,-.32+.20*Math.sin(x/1.38),5.6]);b.push([x,-.50+.20*Math.sin(x/1.38),8.7]);}return a.concat(b.reverse());}
+function projectCross(f){const q=crossingAt(f),p=(a,h)=>[960+1030*(a[0]-q.camera.x)/a[2],540-1030*a[1]/a[2],1030*h/a[2]];const a=p(q.a,q.heightA),b=p(q.b,q.heightB);return {a,b,center_distance:Math.hypot(a[0]-b[0],a[1]-b[1]),height_difference:Math.abs(a[2]-b[2])};}
+function phase(f){return f<324?0:f<459?1:f<598?2:3;}
+function parseWav(bytes,expectedFrames=11982720){const d=new DataView(bytes),four=p=>String.fromCharCode(...new Uint8Array(bytes,p,4)),u=p=>d.getUint32(p,true);check(bytes.byteLength>=44&&four(0)==="RIFF"&&four(8)==="WAVE"&&u(4)+8===bytes.byteLength,"RIFF header");let fmt=null,data=null;
+ for(let p=12;p<bytes.byteLength;){check(p+8<=bytes.byteLength,"truncated WAV chunk");const type=four(p),size=u(p+4),start=p+8,end=start+size;check(end+(size&1)<=bytes.byteLength,"WAV chunk bounds");if(type==="fmt "){check(!fmt&&size>=16,"WAV fmt");fmt={format:d.getUint16(start,true),channels:d.getUint16(start+2,true),rate:u(start+4),byteRate:u(start+8),align:d.getUint16(start+12,true),bits:d.getUint16(start+14,true)};}if(type==="data"){check(!data,"duplicate WAV data");data={start,size};}p=end+(size&1);}
+ check(fmt&&data&&fmt.format===1&&fmt.channels===2&&fmt.rate===SR&&fmt.byteRate===SR*4&&fmt.align===4&&fmt.bits===16&&data.size===expectedFrames*4,"WAV PCM format/count");return {...fmt,frames:data.size/4,offset:data.start};
+}
+function slicePCM(bytes,meta,start,count){check(start>=0&&count>0&&start+count<=meta.frames,"PCM slice bounds");const d=new DataView(bytes,meta.offset+start*4,count*4),a=[new Float32Array(count),new Float32Array(count)];for(let k=0;k<count;k++)for(let c=0;c<2;c++)a[c][k]=d.getInt16(4*k+2*c,true)/32768;return a;}
+async function readSource(file){sourcePCM=null;envelope=null;check(file&&file.size===47944708,"source WAV size");const bytes=await file.arrayBuffer();check(await hashBytes(bytes)===SOURCE_SHA,"source WAV SHA mismatch");const meta=parseWav(bytes);check(await hashBytes(new Uint8Array(bytes,meta.offset+2304000*4,1440000*4))===PCM_SHA,"slice PCM SHA mismatch");sourcePCM=slicePCM(bytes,meta,2304000,1440000);envelope=makeEnvelope(sourcePCM);return {source_sha:SOURCE_SHA,pcm_sha:PCM_SHA,frames:1440000,rate:SR,channels:2,source_frames:meta.frames,data_offset:meta.offset};}
+function makeEnvelope(p){const n=p[0].length/480;check(Number.isInteger(n),"10ms PCM grid");const a=new Float32Array(n);let q=0;for(let j=0;j<n;j++){let sum=0;for(let k=j*480;k<(j+1)*480;k++)sum+=p[0][k]**2+p[1][k]**2;const db=10*Math.log10(Math.max(sum/960,1e-12)),v=clamp((db+35)/21,0,1),alpha=1-Math.exp(-.01/(v>q?.05:.12));q+=alpha*(v-q);a[j]=q;}return a;}
+function audioBuffer(sec){check(sourcePCM&&Number.isInteger(sec)&&sec>=0&&sec<D,"real PCM not loaded");const b=new AudioBuffer({length:SR,numberOfChannels:2,sampleRate:SR});for(let ch=0;ch<2;ch++)b.copyToChannel(sourcePCM[ch].subarray(sec*SR,(sec+1)*SR),ch);return b;}
+function smooth01(x){x=clamp(x,0,1);return x*x*(3-2*x);}
+function soundCurve(f,e){const pos=f*100/FPS,j=Math.floor(pos),a=e[Math.min(j,e.length-1)],b=e[Math.min(j+1,e.length-1)],v=a+(b-a)*(pos-j);const accent=.12*Math.exp(-.5*((f-469)/4)**2),quiet=1-.30*smooth01((f-493)/18),mix=smooth01((f-598)/12);return {thickness:1+.25*v*mix,light:quiet*(1-mix)+(.7+.5*v)*mix+accent};}
+function soundAt(f){check(envelope,"audio envelope unavailable");return soundCurve(f,envelope);}
+function storageGate(e){const need=120*1024*1024+48*1024*1024;return {required_bytes:need,available_bytes:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)?Math.max(0,e.quota-e.usage):null,pass:Number.isFinite(e?.quota)&&Number.isFinite(e?.usage)&&e.quota-e.usage>=need,physical_ram:"UNVERIFIED"};}
+function generationGate(){check(GENERATION_ALLOWED&&SCENE_READY,"V13 generation disabled; verified art adapter and separate approval required");}
+
+const WORLD_Y=2.6;
+function strokePoly(x1,y1,x2,y2,w){const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);check(len>0,"zero glyph stroke");const nx=-dy*w/(2*len),ny=dx*w/(2*len);return [[x1+nx,y1+ny],[x2+nx,y2+ny],[x2-nx,y2-ny],[x1-nx,y1-ny]];}
+const poly=(...xy)=>xy;
+function arcPoly(cx,cy,rx,ry,wx,wy,start,end,n=48){const a=[],b=[];for(let i=0;i<=n;i++){const t=start+(end-start)*i/n;a.push([cx+rx*Math.cos(t),cy+ry*Math.sin(t)]);b.push([cx+(rx-wx)*Math.cos(t),cy+(ry-wy)*Math.sin(t)]);}return a.concat(b.reverse());}
+function glyphPolys(ch){const l=strokePoly,rect=(x,y,w,h)=>[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];
+ if(ch==="K")return [l(.06,0,.06,1,.042),l(.08,.49,.65,1,.042),l(.08,.49,.66,0,.042)];
+ if(ch==="O")return [arcPoly(.49,.5,.49,.5,.035,.035,0,2*Math.PI-.00001,96)];
+ if(ch==="N")return [l(.055,0,.055,1,.042),l(.055,1,.72,0,.042),l(.72,0,.72,1,.042)];
+ if(ch==="C")return [arcPoly(.48,.5,.48,.5,.14,.095,.24*Math.PI,1.76*Math.PI,80),poly([.78,.8],[.91,.92],[.94,.75]),poly([.78,.2],[.91,.08],[.94,.25])];
+ if(ch==="R")return [rect(.085,0,.14,1),rect(0,.96,.32,.04),rect(0,0,.32,.04),arcPoly(.25,.74,.48,.26,.13,.07,-Math.PI/2,Math.PI/2,48),l(.24,.49,.72,.035,.15),rect(.58,0,.22,.04)];
+ if(ch==="Y")return [l(.1,1,.45,.49,.12),l(.8,1,.45,.49,.075),rect(.38,0,.14,.53),rect(.25,0,.40,.04),rect(0,.96,.27,.04),rect(.64,.96,.25,.04)];
+ if(ch===".")return [Array.from({length:32},(_,i)=>[.10+.09*Math.cos(i*2*Math.PI/32),.10+.09*Math.sin(i*2*Math.PI/32)])];
+ if(ch==="イ")return [l(.08,.48,.85,.97,.105),l(.48,.75,.48,.04,.105)];
+ if(ch==="カ")return [l(.10,.73,.88,.73,.105),l(.88,.73,.79,.13,.105),l(.79,.13,.64,.05,.105),l(.53,.96,.44,.47,.105),l(.44,.47,.14,.05,.105)];
+ if(ch==="リ")return [l(.17,.95,.17,.43,.105),l(.75,.95,.75,.46,.105),l(.75,.46,.60,.20,.105),l(.60,.20,.35,.03,.105)];
+ throw Error("unsupported glyph "+ch);}
+function shapeFrom(T,points){const s=new T.Shape();s.moveTo(...points[0]);for(const p of points.slice(1))s.lineTo(...p);s.closePath();return s;}
+function makeWord(T,word,depth,mat){const group=new T.Group();let offset=0;for(const ch of word){const polys=glyphPolys(ch),xs=polys.flat().map(p=>p[0]),lo=Math.min(...xs),hi=Math.max(...xs);for(const points of polys){const q=points.map(([x,y])=>[x-lo+offset,y]);const shape=shapeFrom(T,q),geo=depth>0?new T.ExtrudeGeometry(shape,{depth,bevelEnabled:false,curveSegments:12}):new T.ShapeGeometry(shape);if(depth>0)geo.translate(0,0,-depth);const mesh=new T.Mesh(geo,mat);mesh.castShadow=depth>0;mesh.receiveShadow=depth>0;group.add(mesh);}offset+=hi-lo+.14;}
+ const box=new T.Box3().setFromObject(group),center=box.getCenter(new T.Vector3()),size=box.getSize(new T.Vector3());check(size.y>0&&size.x>0,"invalid glyph geometry");for(const mesh of group.children){mesh.geometry.translate(-center.x,-center.y,0);mesh.geometry.scale(1/size.y,1/size.y,1);}group.userData.bounds={width:size.x/size.y,height:1};return group;}
+function bandGeometry(T,r,w,d){const shape=new T.Shape();shape.absarc(0,0,r,0,Math.PI*2,false);const hole=new T.Path();hole.absarc(0,0,r-w,0,Math.PI*2,true);shape.holes.push(hole);const geo=new T.ExtrudeGeometry(shape,{depth:d,bevelEnabled:true,bevelSize:.025,bevelThickness:.025,bevelSegments:1,curveSegments:96});geo.translate(0,0,-d/2);return geo;}
+function buildArt(T,scene){
+ const mats={silver:new T.MeshStandardMaterial({color:0xc9c9c9,metalness:1,roughness:.19}),graphite:new T.MeshStandardMaterial({color:0x242424,metalness:.25,roughness:.54}),floor:new T.MeshStandardMaterial({color:0x353535,metalness:.73,roughness:.26}),glass:new T.MeshPhysicalMaterial({color:0xffffff,metalness:0,roughness:.055,transmission:.94,thickness:.65,ior:1.46,clearcoat:.5,attenuationColor:new T.Color(0xffffff),attenuationDistance:5}),white:new T.MeshStandardMaterial({color:0xececec,metalness:.15,roughness:.31,emissive:0xaaaaaa,emissiveIntensity:.14}),cross:new T.MeshBasicMaterial({color:0xececec,side:T.DoubleSide,transparent:true,opacity:0,depthWrite:false}),rail:new T.MeshStandardMaterial({color:0xbcbcbc,metalness:.85,roughness:.26})};
+ const objects=[];function put(geo,mat,x,y,z,name){const m=new T.Mesh(geo,mat);m.name=name;m.position.set(x,y,-z);m.castShadow=mat!==mats.glass;m.receiveShadow=true;scene.add(m);objects.push(m);return m;}
+ const floor=put(new T.PlaneGeometry(110,110),mats.floor,0,0,10,"reflective floor");floor.rotation.x=-Math.PI/2;floor.castShadow=false;
+ const sphere=put(new T.SphereGeometry(6,48,32),mats.graphite,-.8,4.1,17.2,"dark graphite horizon");sphere.castShadow=false;
+ const pillarGeo=new T.BoxGeometry(.42,6.5,.6);for(let k=0;k<12;k++){const x=k%2?5.9:-5.9,z=1.5+Math.floor(k/2)*5.2;put(pillarGeo,mats.graphite,x,3.25,z,"distant pillar "+k);}
+ const bands=[];function band(r,w,d,x,y,z,rx,ry,rz,name,sx=1,sy=1){const m=put(bandGeometry(T,r,w,d),mats.silver,x,y,z,name);m.rotation.set(rx,ry,rz);m.scale.set(sx,sy,1);bands.push(m);return m;}
+ band(5.7,.22,.13,0,6.0,8.7,.22,-.14,.16,"upper rear silver band",1,.40);
+ band(5.8,.28,.16,0,.18,5.3,1.18,-.16,.08,"lower foreground silver band",1,.60);
+ band(7.6,.16,.12,0,3.2,-2.6,.12,.22,.22,"entry orbit",1,.74);
+ band(7.1,.055,.035,0,4.6,1.6,.9,.12,-.12,"fine orbital ring",1,.68);
+ band(7.6,.10,.07,0,3.5,21.2,.48,.21,-.18,"distant orbit",1,.65);
+ const inlay=put(new T.RingGeometry(7.2,7.23,128),mats.silver,0,.008,8,"floor ellipse");inlay.rotation.x=-Math.PI/2;inlay.scale.y=1.45;inlay.castShadow=false;
+ for(const [x,y,z,r] of [[-5.4,3.7,2.7,1.2],[-3.5,4.5,7.7,.38],[4.8,3.1,9.3,.37],[3.4,.67,13,.49],[-3.7,.42,5.4,.15],[-2.1,5.7,12,.08],[5.7,1.1,17,.10]])put(new T.SphereGeometry(r,32,24),mats.glass,x,y,z,"glass sphere");
+ const rail=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(railPoints().map(p=>new T.Vector3(p[0],WORLD_Y+p[1],-p[2])),false,"centripetal"),148,.011,6,false),mats.rail);scene.add(rail);rail.name="continuous T01 line";
+ const crossA=makeWord(T,"イカリ",0,mats.cross),crossB=makeWord(T,"イカリ",0,mats.cross);scene.add(crossA,crossB);crossA.name="T01 near glyph";crossB.name="T01 far glyph";crossA.renderOrder=2;crossB.renderOrder=1;
+ const kon=makeWord(T,"KON",.05,mats.white),cry=makeWord(T,"CRY.",.15,mats.white.clone());scene.add(kon,cry);kon.name="fine KON";cry.name="heavy CRY.";const titleHeight=.92,kw=kon.userData.bounds.width*titleHeight,cw=cry.userData.bounds.width*titleHeight,gap=.21;kon.position.set(-(cw+gap)/2,WORLD_Y+.30,-9.2);cry.position.set((kw+gap)/2,WORLD_Y+.30,-9.2);
+ const titleMats=[kon.children[0].material,cry.children[0].material];for(const mat of titleMats){mat.transparent=true;mat.depthWrite=false;mat.opacity=0;}
+ function applyArt(f,sound){const q=crossingAt(f),fade=smooth01((f-305)/19)*(1-smooth01((f-459)/22));crossA.position.set(q.a[0],WORLD_Y+q.a[1],-q.a[2]);crossB.position.set(q.b[0],WORLD_Y+q.b[1],-q.b[2]);crossA.scale.setScalar(q.heightA);crossB.scale.setScalar(q.heightB);crossA.visible=crossB.visible=fade>0;mats.cross.opacity=fade;
+ const title=smooth01((f-575)/23);for(const [i,g] of [kon,cry].entries()){g.visible=title>0;g.scale.set(titleHeight,titleHeight,titleHeight*sound.thickness);titleMats[i].opacity=title;titleMats[i].emissiveIntensity=.14*sound.light;}
+ }
+ return {objects,bands,rail,crossA,crossB,kon,cry,titleMats,applyArt,titleHeight};}
+function actualProjection(T,camera,group){group.updateMatrixWorld(true);const w=group.userData.bounds.width;const corners=[[-w/2,-.5],[w/2,-.5],[w/2,.5],[-w/2,.5]].map(([x,y])=>new T.Vector3(x,y,0).applyMatrix4(group.matrixWorld).project(camera)).map(v=>[(v.x+1)*W/2,(1-v.y)*H/2]);const xs=corners.map(p=>p[0]),ys=corners.map(p=>p[1]);return {x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2,h:Math.max(...ys)-Math.min(...ys),corners};}
+
+async function gpuSetup(preflightOnly=false,projectPayload=null){
+ if(projectPayload)check(preflightOnly===true,"NanJaRo render lock");
+ if(!preflightOnly)generationGate();
+ check(window.isSecureContext&&navigator.gpu,"WebGPU unavailable");
+ const [T,L,S,A,B,G,Dither]=await deadline(Promise.all([import("three/webgpu"),import("three/tsl"),import("three/addons/tsl/display/SSRNode.js"),import("three/addons/tsl/display/GTAONode.js"),import("three/addons/tsl/display/boxBlur.js"),import("three/addons/tsl/display/GaussianBlurNode.js"),import("three/addons/tsl/math/Bayer.js")]),30000,"Three.js postprocessing import");
+ check(T.REVISION==="180","unexpected Three.js revision");
+ const canvas=document.createElement("canvas");canvas.width=preflightOnly?1:W;canvas.height=preflightOnly?1:H;
+ canvas.style.cssText="display:block;width:100%;height:auto;border-radius:8px";
+ if(!preflightOnly)$("stage").appendChild(canvas);
+ let renderer=null,scene=null,env=null,lost=false,device=null,uncaptured=null,post=null,scenePass=null,ssrPass=null,aoPass=null,volumeScene=null,volumePass=null,volumeBlur=null,combinedTex=null;
+ let cleaned=false;const cleanup=()=>{if(cleaned)return;cleaned=true;try{for(const item of [post,volumeBlur,volumePass,combinedTex?.renderTarget,ssrPass,aoPass,scenePass]){try{item?.dispose();}catch(e){console.warn("pass cleanup",e);}}if(scene){const geos=new Set(),mats=new Set();scene.traverse(o=>{if(o.geometry)geos.add(o.geometry);if(o.material){for(const m of [].concat(o.material))mats.add(m);}});scene.environment=null;geos.forEach(g=>g.dispose());mats.forEach(m=>m.dispose());scene.clear();}if(volumeScene){volumeScene.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});volumeScene.clear();}if(env)env.dispose();if(renderer)renderer.dispose();}finally{try{if(device){if(uncaptured)device.removeEventListener("uncapturederror",uncaptured);device.destroy();}}finally{canvas.remove();canvas.width=1;canvas.height=1;}}};
+ try{
+  renderer=new T.WebGPURenderer({canvas,alpha:false,antialias:true,powerPreference:"high-performance"});
+  renderer.setPixelRatio(1);renderer.setSize(preflightOnly?1:W,preflightOnly?1:H,false);
+  renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=0.78;
+  renderer.outputColorSpace=T.SRGBColorSpace;renderer.shadowMap.enabled=true;
+  await deadline(renderer.init(),20000,"Three.js WebGPU init");
+  check(renderer.backend?.isWebGPUBackend===true,"WebGPU fallback is not permitted");
+  device=renderer.backend.device;check(device,"GPU device missing");
+  device.lost.then(()=>{lost=true;});
+  let gpuError="";uncaptured=e=>{gpuError=e.error?.message||"GPU error";};device.addEventListener("uncapturederror",uncaptured);
+
+  scene=new T.Scene();
+  if(projectPayload){const result=await njStage.verify(T,scene,projectPayload);check(!lost&&!gpuError,gpuError||"GPU lost");return {backend:"three-r180-webgpu",stage:result,destroy:cleanup};}
+  scene.background=new T.Color(0x101010);scene.fog=new T.FogExp2(0x303030,.026);
+  const ew=256,eh=128,px=new Float32Array(ew*eh*4);for(let y=0;y<eh;y++)for(let x=0;x<ew;x++){const u=x/ew,v=y/eh,i=(y*ew+x)*4;const lobe=(c,d,sx,sy)=>Math.exp(-.5*((Math.min(Math.abs(u-c),1-Math.abs(u-c))/sx)**2+((v-d)/sy)**2));const val=.035+6*lobe(.20,.24,.085,.18)+3.2*lobe(.68,.35,.065,.20)+1.1*lobe(.48,.07,.2,.08);px[i]=px[i+1]=px[i+2]=val;px[i+3]=1;}
+  const half=new Uint16Array(px.length);for(let i=0;i<px.length;i++)half[i]=T.DataUtils.toHalfFloat(px[i]);env=new T.DataTexture(half,ew,eh,T.RGBAFormat,T.HalfFloatType);env.mapping=T.EquirectangularReflectionMapping;env.colorSpace=T.LinearSRGBColorSpace;env.minFilter=T.LinearFilter;env.magFilter=T.LinearFilter;env.needsUpdate=true;scene.environment=env;scene.environmentIntensity=.9;
+  const art=buildArt(T,scene);
+  const hemi=new T.HemisphereLight(0xffffff,0x222222,.48);scene.add(hemi);
+  const key=new T.SpotLight(0xffffff,72,35,Math.PI/5,.65,2);key.position.set(-4,7,-5);key.target.position.set(0,2.4,-8);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.bias=-.0004;key.shadow.normalBias=.025;scene.add(key,key.target);
+  const rim=new T.PointLight(0xffffff,42,24,2);rim.position.set(5.2,5,-12);scene.add(rim);
+  const fill=new T.PointLight(0xffffff,20,20,2);fill.position.set(-4,1.2,-14);scene.add(fill);
+  const camera=new T.PerspectiveCamera(2*Math.atan(540/1030)*180/Math.PI,W/H,.30,100);
+  // Three.js r180 official SSR and GTAO patterns; shared G-buffer.
+  post=new T.PostProcessing(renderer);
+  scenePass=L.pass(scene,camera);
+  scenePass.setMRT(L.mrt({output:L.output,normal:L.normalView,metalrough:L.vec2(L.metalness,L.roughness)}));
+  const beauty=scenePass.getTextureNode("output"),normal=scenePass.getTextureNode("normal"),depth=scenePass.getTextureNode("depth"),mr=scenePass.getTextureNode("metalrough");
+  // Signed normals remain half-float; do not pack signed values in unsigned texture.
+  scenePass.getTexture("metalrough").type=T.UnsignedByteType;
+  ssrPass=S.ssr(beauty,depth,normal,mr.r,mr.g);
+  ssrPass.resolutionScale=0.5;ssrPass.quality.value=0.5;ssrPass.blurQuality.value=2;ssrPass.maxDistance.value=3.0;ssrPass.opacity.value=0.7;ssrPass.thickness.value=0.08;
+  aoPass=A.ao(depth,normal,camera);aoPass.resolutionScale=0.5;aoPass.radius.value=0.35;aoPass.scale.value=0.8;aoPass.thickness.value=0.8;
+  const reflected=L.blendColor(beauty,ssrPass);
+  const occlusion=L.mix(L.float(1),aoPass.getTextureNode().r,0.65);
+  const lit=L.vec4(reflected.rgb.mul(occlusion),reflected.a);
+  // Separate black volume scene: keep original beauty, lights, and reflections untouched.
+  // Use r180 VolumeNodeMaterial and scene-depth occlusion, but no secondary shadow map.
+  volumeScene=new T.Scene();volumeScene.background=new T.Color(0x000000);
+  const volumeMat=new T.VolumeNodeMaterial();
+  volumeMat.steps=12;
+  volumeMat.offsetNode=Dither.bayer16(L.screenCoordinate);
+  volumeMat.scatteringNode=L.Fn(()=>L.float(0.65));
+  volumeMat.depthNode=depth.sample(L.screenUV);
+  const volumeMesh=new T.Mesh(new T.BoxGeometry(26,12,26),volumeMat);volumeMesh.position.set(0,3,-8);volumeMesh.frustumCulled=false;volumeMesh.receiveShadow=true;volumeScene.add(volumeMesh);
+  const volumeKey=new T.SpotLight(key.color.clone(),key.intensity,key.distance,key.angle,key.penumbra,key.decay);volumeKey.position.copy(key.position);volumeKey.target.position.copy(key.target.position);// r180 VolumetricLightingModel.direct() unconditionally multiplies lightNode.shadowNode.
+  // Explicit unity shadow node preserves the intended no-secondary-shadow-map design.
+  // AnalyticLightNode.setupShadow() accepts light.shadow.shadowNode when cast/receive are true.
+  volumeKey.castShadow=true;volumeKey.shadow.shadowNode=L.float(1);volumeScene.add(volumeKey,volumeKey.target);
+  volumePass=L.pass(volumeScene,camera,{depthBuffer:false});volumePass.setResolution(0.25);
+  volumeBlur=G.gaussianBlur(volumePass,L.uniform(0.65));
+  const atmospheric=L.vec4(lit.rgb.add(volumeBlur.rgb.mul(0.22)),lit.a);
+  // Official mobile basic DoF: depth-weighted blur of the completed composite,
+  // rather than blurring unreflected beauty and losing SSR/GTAO.
+  combinedTex=L.convertToTexture(atmospheric);
+  const focusDepth=L.uniform(6.8),focusPoint=new T.Vector3(0,1.95,0),focusView=new T.Vector3();
+  const viewZ=scenePass.getViewZNode();
+  const blurWeight=L.smoothstep(1.15,4.4,viewZ.add(focusDepth).abs());
+  const blurred=B.boxBlur(combinedTex,{size:L.int(1),separation:L.int(3)});
+  post.outputNode=L.mix(combinedTex,blurred,blurWeight);
+
+
+
+  function pose(index){const p=cameraAt(index),yaw=p.yaw*Math.PI/180,sound=envelope?soundAt(index):{thickness:1,light:1};camera.position.set(p.x,WORLD_Y,-p.z);camera.lookAt(p.x+Math.sin(yaw),WORLD_Y,-p.z-Math.cos(yaw));camera.updateMatrixWorld(true);art.applyArt(index,sound);key.intensity=72*sound.light;volumeKey.intensity=key.intensity;focusPoint.set(0,WORLD_Y+.27,index>=598?-9.2:-5.6);focusDepth.value=-focusView.copy(focusPoint).applyMatrix4(camera.matrixWorldInverse).z;scene.updateMatrixWorld(true);}
+  function geometryQA(){pose(413);const a=actualProjection(T,camera,art.crossA),b=actualProjection(T,camera,art.crossB),dist=Math.hypot(a.x-b.x,a.y-b.y),hd=Math.abs(a.h-b.h);const rays=[];const ray=new T.Raycaster();for(const g of [art.crossA,art.crossB]){const v=g.getWorldPosition(new T.Vector3()),dir=v.clone().sub(camera.position),len=dir.length();ray.set(camera.position,dir.normalize());ray.near=.30;ray.far=len-.03;const hits=ray.intersectObjects(art.objects.filter(x=>x.material.transmission!==.94),false);rays.push(hits.map(x=>x.object.name));}return {center_distance:dist,height_difference:hd,a,b,anchor_geometry_pass:dist<=1&&hd<=1,center_ray_obstacles:rays,opaque_anchor_center_clear:rays.every(x=>x.length===0),scene_mesh_count:art.objects.length,band_count:art.bands.length,glyph_source:"procedural outline approximation; not original Blender glyph meshes",rendered:false};}
+  const ctx={T,renderer,device,post,pose,camera,focusDepth,get lost(){return lost},get gpuError(){return gpuError}};
+  const base={canvas,backend:"three-r180-webgpu",effects:{scene:"V04 monochrome interpretation",ssr_resolution_scale:.5,gtao_resolution_scale:.5,volumetric_resolution_scale:.25,reference_sha:REF_SHA,art_match:"UNVERIFIED"},geometryQA,destroy:cleanup};
+  if(preflightOnly)return base;
+  return {...base,...directCaptureAdapter(ctx),
+async preflight(startIndex=0){
+    const results=[];const original=post.outputNode;
+    async function verify(label,node,index=0){
+      post.outputNode=node;post.needsUpdate=true;pose(index);
+      const started=performance.now();let thrown=null;let scoped=null;
+      device.pushErrorScope("validation");
+      try{post.render();await deadline(renderer.waitForGPU(),25000,label+" GPU completion");}
+      catch(e){thrown=e;}
+      finally{try{scoped=await deadline(device.popErrorScope(),12000,label+" GPU validation");}catch(e){if(!thrown)thrown=e;}}
+      if(thrown||scoped||lost||gpuError){const err=Error(label+": "+(thrown?.message||scoped?.message||gpuError||"GPU device lost"));err.preflight=results.concat({stage:label,status:"FAIL",error:err.message});throw err;}
+      results.push({stage:label,status:"PASS",elapsed_ms:Math.round(performance.now()-started)});
+    }
+    await verify("volume_with_depth",L.vec4(volumeBlur.rgb,1),startIndex);
+    await verify("combined_dof_at_segment_start",original,startIndex);
+    await verify("combined_dof_repeat_at_segment_start",original,startIndex);
+    return results;
+  },async frame(index){check(!lost&&!gpuError,gpuError||"GPU device lost");pose(index);post.render();await deadline(renderer.waitForGPU(),25000,"GPU completion");check(!lost&&!gpuError,gpuError||"GPU device lost");}};
+ }catch(e){cleanup();throw e;}
+}
+
+function audioMeter(){return {pcm:[new Float32Array(D*SR),new Float32Array(D*SR)],next:0,covered:0,coverage_errors:0,pre_samples:0,post_samples:0,peak:0,clips:0};}
+function meterBlock(q,buf,ts){check(buf.sampleRate===SR&&buf.numberOfChannels===2,"audio format");const base=Math.round(ts*SR);check(Math.abs(ts*SR-base)<.1,"PCM grid");const a=[buf.getChannelData(0),buf.getChannelData(1)];for(let k=0;k<buf.length;k++){const i=base+k;if(i<0){q.pre_samples++;continue;}if(i>=D*SR){q.post_samples++;continue;}if(i!==q.next)q.coverage_errors++;q.next=i+1;q.covered++;for(let c=0;c<2;c++){const x=a[c][k];check(Number.isFinite(x),"nonfinite PCM");q.pcm[c][i]=x;q.peak=Math.max(q.peak,Math.abs(x));if(Math.abs(x)>=1)q.clips++;}}}
+function corr(a,b,start,end,lag,stride=1){let sx=0,sy=0,xx=0,yy=0,xy=0,n=0;const lo=Math.max(start,-lag),hi=Math.min(end,b.length-lag);for(let i=lo;i<hi;i+=stride){const x=a[i],y=b[i+lag];sx+=x;sy+=y;xx+=x*x;yy+=y*y;xy+=x*y;n++;}const vx=xx-sx*sx/n,vy=yy-sy*sy/n;return n>1&&vx>1e-10&&vy>1e-10?(xy-sx*sy/n)/Math.sqrt(vx*vy):null;}
+function rms(a,start,end){let ss=0;for(let i=start;i<end;i++)ss+=a[i]*a[i];return Math.sqrt(ss/(end-start));}
+function alignWindow(a,b,start,end){const zero=corr(a,b,start,end,0);let coarse=[];for(let lag=-2400;lag<=2400;lag+=16){const c=corr(a,b,start,end,lag,16);if(c!==null)coarse.push([lag,c]);}coarse.sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const candidates=new Set([0]);for(const [lag] of coarse.slice(0,4))for(let j=-16;j<=16;j++)if(Math.abs(lag+j)<=2400)candidates.add(lag+j);let ranked=[...candidates].map(lag=>[lag,corr(a,b,start,end,lag,4)??-1]).sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const refined=[...new Set([0,...ranked.slice(0,5).map(x=>x[0])])].map(lag=>[lag,corr(a,b,start,end,lag)??-1]).sort((x,y)=>y[1]-x[1]||Math.abs(x[0])-Math.abs(y[0]));const [lag,correlation]=refined[0];return {lag_samples:lag,lag_ms:lag/SR*1000,correlation,zero_lag_correlation:zero,ambiguous:refined.slice(1).some(x=>Math.abs(x[0]-lag)>480&&x[1]>=correlation-.0001),pass:correlation>=.98&&Math.abs(lag)<=480};}
+function assessAudio(q){check(sourcePCM,"missing source PCM");const rows=[];for(let c=0;c<2;c++)for(let sec=0;sec<D;sec++){const start=sec*SR,end=start+SR,ref=rms(sourcePCM[c],start,end),out=rms(q.pcm[c],start,end),db=20*Math.log10(Math.max(ref,1e-12)),gain=20*Math.log10(Math.max(out,1e-12)/Math.max(ref,1e-12));rows.push({channel:c,second:sec,input_rms_dbfs:db,output_rms_dbfs:20*Math.log10(Math.max(out,1e-12)),gain_db:gain,...(db>=-45?{valid:true,...alignWindow(sourcePCM[c],q.pcm[c],start,end)}:{valid:false,status:"LOW_SIGNAL_REVIEW"})});}
+ const valid=rows.filter(x=>x.valid);return {coverage_pass:q.coverage_errors===0&&q.covered===D*SR&&q.next===D*SR,covered_sample_frames:q.covered,coverage_errors:q.coverage_errors,pre_samples:q.pre_samples,post_samples:q.post_samples,peak:q.peak,clips:q.clips,valid_windows:valid.length,windows_pass:valid.filter(x=>x.pass&&!x.ambiguous).length,pass:valid.length>0&&valid.every(x=>x.pass&&!x.ambiguous)&&q.clips===0,windows:rows,lag_search:"coarse-to-fine ±50ms, nonzero ambiguity fails"};}
+async function verifyArt(refFile,zipFile){check(refFile&&refFile.size===217450&&zipFile&&zipFile.size===2583429,"V04 reference/ZIP missing or wrong size");const [refHash,zipHash]=await Promise.all([sha256(refFile),sha256(zipFile)]);check(refHash===REF_SHA&&zipHash===ZIP_SHA,"V04 SHA mismatch");let bitmap=await createImageBitmap(refFile);try{check(bitmap.width===1536&&bitmap.height===864,"V04 image dimensions");}finally{bitmap.close();}return {reference_sha:refHash,zip_sha:zipHash,reference_decode:"PASS",zip_crc:"UNVERIFIED_IN_BROWSER",scene_ready:false};}
+function numericQA(){const p=projectCross(413);const ranges=[0,324,459,598,900];const points=ranges.map(cameraAt),eps=.001;const continuity=[180,324,360,459,540,598,720].map(f=>{const a=cameraAt(f-eps),b=cameraAt(f),c=cameraAt(f+eps);return {f,max_derivative_delta:Math.max(...["x","z","yaw"].map(k=>Math.abs((c[k]-b[k]-(b[k]-a[k]))/eps*FPS)))};});const pass=p.center_distance<=1&&p.height_difference<=1&&continuity.every(x=>x.max_derivative_delta<.01)&&railPoints().length===74&&Array.from({length:N},(_,f)=>cameraAt(f)).every(x=>Object.values(x).every(Number.isFinite));return {pass,anchor:p,camera:points,continuity,phase_counts:[0,1,2,3].map(x=>Array.from({length:N},(_,f)=>phase(f)===x).filter(Boolean).length),rail_vertices:74};}
+// Thumbnail QA: tiny diagnostic readback, never full-frame CPU rendering.
+const SAMPLE_FRAMES=[0,1,2,177,178,179];
+const hashBytes=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",b)),n=>n.toString(16).padStart(2,"0")).join("");
+function reduceRGBA(p){
+ check(p.length===FRAME_BYTES,"wrong RGBA size");
+ const a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  let sum=0;for(let dy=0;dy<15;dy++)for(let dx=0;dx<15;dx++){
+   const i=((y*15+dy)*W+x*15+dx)*4;
+   sum+=.299*p[i]+.587*p[i+1]+.114*p[i+2];
+  }a[y*THUMB_W+x]=Math.round(sum/225);
+ }return a;
+}
+
+// Narrow alternate QA for the measured, approved F0..6 ease-in only.
+// No exemption from actual decoded freeze, pixel validity, timestamp or jump checks.
+const SLOW_END=6,SLOW_CONTEXT=8,SLOW_SAMPLES=480*270*3;
+function highGrid(rgba){check(rgba.length===FRAME_BYTES,"high-grid RGBA dimensions");const a=new Uint8Array(SLOW_SAMPLES);let k=0;for(let y=0;y<H;y+=4)for(let x=0;x<W;x+=4){const i=(y*W+x)*4;a[k++]=rgba[i];a[k++]=rgba[i+1];a[k++]=rgba[i+2];}return a;}
+function deltaEvidence(a,b,c,d){check([a,b,c,d].every(x=>x instanceof Uint8Array&&x.length===a.length),"delta grid identity");let ab=0,cd=0,aa=0,cc=0,ac=0;for(let k=0;k<a.length;k++){const x=b[k]-a[k],y=d[k]-c[k];ab+=Math.abs(x);cd+=Math.abs(y);aa+=x*x;cc+=y*y;ac+=x*y;}const ratio=ab?cd/ab:null,cosine=aa&&cc?ac/Math.sqrt(aa*cc):null;return {input_mad:ab/a.length,output_mad:cd/a.length,ratio,cosine,pass:ab>0&&cd>0&&ratio>=.5&&ratio<=1.5&&cosine>=.5};}
+function rawSlowGate(rows,id){const low=rows.slice(1).filter(x=>x.adjacent_mad<.1);return rows.length===SEG&&rows.every(x=>x.sd>2)&&new Set(rows.map(x=>x.sha256)).size===SEG&&low.every(x=>id===0&&x.global_frame>=1&&x.global_frame<=SLOW_END&&x.adjacent_mad>0);}
+async function decodeSlow(m,v,first,guard){const sink=new m.CanvasSink(v,{width:W,height:H,fit:"contain"}),samples=[],hashes=[];const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;const ctx=canvas.getContext("2d",{willReadFrequently:true});try{for await(const f of sink.canvases()){guard();const n=samples.length;check(Math.abs(f.timestamp-first-n/FPS)<.002&&f.canvas.width===W&&f.canvas.height===H,"slow full-resolution decoded PTS/size");ctx.drawImage(f.canvas,0,0);const pixels=ctx.getImageData(0,0,W,H).data;hashes.push(await hashBytes(pixels));samples.push(highGrid(pixels));if(n===SLOW_CONTEXT)break;}}finally{canvas.width=canvas.height=1;}check(samples.length===SLOW_CONTEXT+1,"slow decode context count");return {samples,hashes};}
+async function verifySlow(m,v,first,r,guard){check(Array.isArray(r.slow_grid)&&r.slow_grid.length===SLOW_CONTEXT+1&&Array.isArray(r.slow_grid_sha)&&r.slow_grid_sha.length===SLOW_CONTEXT+1&&Array.isArray(r.slow_raw_sha)&&r.slow_raw_sha.length===SLOW_CONTEXT+1&&new Set(r.slow_raw_sha).size===SLOW_CONTEXT+1,"slow raw evidence missing");for(let i=0;i<=SLOW_CONTEXT;i++)check(r.slow_grid[i] instanceof Uint8Array&&r.slow_grid[i].length===SLOW_SAMPLES&&await hashBytes(r.slow_grid[i])===r.slow_grid_sha[i],"slow evidence SHA");const decoded=await decodeSlow(m,v,first,guard);const rows=[];for(let i=1;i<=SLOW_CONTEXT;i++){const e=deltaEvidence(r.slow_grid[i-1],r.slow_grid[i],decoded.samples[i-1],decoded.samples[i]);rows.push({frame:i,...e,decoded_distinct:decoded.hashes[i]!==decoded.hashes[i-1]});}const pass=rows.every(x=>x.pass&&x.decoded_distinct)&&new Set(decoded.hashes).size===SLOW_CONTEXT+1;return {pass,rows,decoded_hashes:decoded.hashes,method:"1080p decoded RGBA SHA + 4px RGB grid temporal delta cosine>=.5 and motion ratio .5–1.5; not exact pixel equality"};}
+function slowAdjustedAssessment(q,slow){if(!slow?.pass)return q;const adjust=m=>({...m,low_mad_frames:m.static_frames,static_frames:m.static_frames,edge_static_frames:m.edge_static_frames});const inp=adjust(q.input_motion),out=adjust(q.output_motion);const low=(key)=>q.frames.slice(1).filter(x=>x[key]<.1).map(x=>x.frame),il=low("input_adjacent_mad"),ol=low("output_adjacent_mad");const within=x=>x>=1&&x<=SLOW_END;const normalize=(m,ls)=>({...m,confirmed_slow_frames:ls.filter(within),static_frames:ls.filter(x=>!within(x)).length,edge_static_frames:ls.filter(x=>!within(x)&&[1,2,3,4,176,177,178,179].includes(x)).length,pass:m.interior_median>.1&&ls.every(within)&&m.edge_jump_frames.length===0});const a=normalize(inp,il),b=normalize(out,ol);const ratios=q.ratio_failures.filter(i=>i<1||i>SLOW_CONTEXT),align=q.alignment_failures.filter(i=>{const f=q.frames[i];return i>SLOW_CONTEXT||f.same_timestamp_mad>8||f.sd_output<=2||f.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<f.same_timestamp_mad);});return {...q,input_motion:a,output_motion:b,ratio_failures:ratios,alignment_failures:align,status:a.pass&&b.pass&&!ratios.length&&!align.length?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",slow_motion_qa:slow};}
+
+function summarizeMotion(d){
+ check(d.length===SEG&&d[0]===null&&d.slice(1).every(Number.isFinite),"invalid motion series");
+ const inside=d.slice(5,176).sort((a,b)=>a-b),med=inside[Math.floor(inside.length/2)],p95=inside[Math.floor(inside.length*.95)];
+ const edgeIndices=[1,2,3,4,176,177,178,179],edges=edgeIndices.map(n=>({frame:n,mad:round(d[n])}));
+ const staticFrames=d.slice(1).filter(x=>x<.1).length;
+ const edgeStatic=edges.filter(x=>x.mad<.1).length;
+ const jumps=edgeIndices.filter(n=>!jumpGate(d[n],[p95,med]));
+ return {interior_median:round(med),interior_p95:round(p95),static_frames:staticFrames,edge_static_frames:edgeStatic,edge_samples:edges,edge_jump_frames:jumps,pass:med>.1&&edgeStatic===0&&jumps.length===0};
+}
+function transformThumb(a,mode){
+ const out=new Uint8Array(a.length);
+ for(let y=0;y<THUMB_H;y++)for(let x=0;x<THUMB_W;x++){
+  const xx=mode==="flip_x"||mode==="flip_xy"?THUMB_W-1-x:x;
+  const yy=mode==="flip_y"||mode==="flip_xy"?THUMB_H-1-y:y;
+  out[y*THUMB_W+x]=a[yy*THUMB_W+xx];
+ }return out;
+}
+function assess(inputs,outputs){
+ check(inputs.length===SEG&&outputs.length===SEG,"180 thumbnails required");
+ const frames=outputs.map((o,j)=>{
+  const a=inputs[j],statsIn=visualStats(a),statsOut=visualStats(o);
+  const modes=["identity","flip_x","flip_y","flip_xy"].map(mode=>({mode,mad:round(mad(a,transformThumb(o,mode)))}));
+  const local=[];for(let k=Math.max(0,j-2);k<=Math.min(SEG-1,j+2);k++)local.push({frame:k,mad:round(mad(inputs[k],o))});
+  const best=Math.min(...local.map(x=>x.mad)),nearest=local.find(x=>x.mad===best).frame;
+  const inMad=j?mad(inputs[j-1],a):null,outMad=j?mad(outputs[j-1],o):null;
+  const ratio=j&&inMad>0?outMad/inMad:null;
+  return {frame:j,same_timestamp_mad:modes[0].mad,nearest_local_input_frame:nearest,unique_nearest:local.filter(x=>x.mad===best).length===1,orientation_candidates:modes,mean_input:round(statsIn.mean),mean_output:round(statsOut.mean),sd_input:round(statsIn.sd),sd_output:round(statsOut.sd),input_adjacent_mad:j?round(inMad):null,output_adjacent_mad:j?round(outMad):null,motion_ratio:ratio===null?null:round(ratio)};
+ });
+ const inputSeries=frames.map(x=>x.input_adjacent_mad),outputSeries=frames.map(x=>x.output_adjacent_mad);
+ const inputMotion=summarizeMotion(inputSeries),outputMotion=summarizeMotion(outputSeries);
+ const inputNormal=inputMotion.pass&&inputMotion.static_frames===0;
+ const outputNormal=outputMotion.pass&&outputMotion.static_frames===0;
+ const ratioFailures=frames.slice(1).filter(x=>x.motion_ratio===null||x.motion_ratio<.5||x.motion_ratio>1.5).map(x=>x.frame);
+ const alignmentFailures=frames.filter(x=>x.nearest_local_input_frame!==x.frame||!x.unique_nearest||x.same_timestamp_mad>8||x.sd_output<=2||x.orientation_candidates.some(y=>y.mode!=="identity"&&y.mad<x.same_timestamp_mad)).map(x=>x.frame);
+ return {frames,input_motion:inputMotion,output_motion:outputMotion,ratio_failures:ratioFailures,alignment_failures:alignmentFailures,input_motion_normal:inputNormal,output_motion_normal:outputNormal,same_time_alignment_pass:alignmentFailures.length===0,status:inputNormal&&outputNormal&&ratioFailures.length===0&&alignmentFailures.length===0?"TECHNICAL_CANDIDATE":"DIAGNOSTIC_VISUAL_FAIL",qualification:"180F local +/-2 input alignment; 128x72 luminance, different reduction kernels; independent exported MP4 and aesthetic/color review required"};
+}
+
+function thumb(source){
+ const q=document.createElement("canvas");q.width=THUMB_W;q.height=THUMB_H;
+ const ctx=q.getContext("2d",{willReadFrequently:true});ctx.drawImage(source,0,0,THUMB_W,THUMB_H);
+ const p=ctx.getImageData(0,0,THUMB_W,THUMB_H).data,a=new Uint8Array(THUMB_W*THUMB_H);
+ for(let i=0;i<a.length;i++){const k=i*4;a[i]=Math.round(.299*p[k]+.587*p[k+1]+.114*p[k+2]);}
+ q.width=1;q.height=1;return a;
+}
+function mad(a,b){check(a?.length===THUMB_W*THUMB_H&&b?.length===a.length,"missing visual thumbnail");let sum=0;for(let i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);return sum/a.length;}
+function visualStats(a){let sum=0,sq=0;for(const x of a){sum+=x;sq+=x*x;}const mean=sum/a.length;return {mean,sd:Math.sqrt(Math.max(0,sq/a.length-mean*mean))};}
+const round=x=>Number(x.toFixed(3));
+function jumpGate(d,neighbors){return d<=Math.max(8,2.5*Math.max(...neighbors));}
+
+function boundaryGate(d,left,right){return d>=.1&&jumpGate(d,[left,right]);}
+function compactAssessment(q){return {status:q.status,input_motion:q.input_motion,output_motion:q.output_motion,ratio_failures:q.ratio_failures,alignment_failures:q.alignment_failures,max_same_timestamp_mad:Math.max(...q.frames.map(x=>x.same_timestamp_mad))};}
+function audioEdit(bytes){
+ const d=new DataView(bytes),four=p=>String.fromCharCode(...new Uint8Array(bytes,p,4)),u=p=>d.getUint32(p),i=p=>d.getInt32(p);
+ const u64=p=>{const v=Number(d.getBigUint64(p));check(Number.isSafeInteger(v),"box integer overflow");return v;};
+ const i64=p=>{const v=Number(d.getBigInt64(p));check(Number.isSafeInteger(v),"edit integer overflow");return v;};
+ function boxes(start,end){const out=[];for(let p=start;p<end;){check(end-p>=8,"truncated MP4 box");let n=u(p),h=8;if(n===1){check(end-p>=16,"truncated extended box");n=u64(p+8);h=16;}else if(n===0)n=end-p;check(n>=h&&p+n<=end,"invalid MP4 box bounds");out.push({type:four(p+4),start:p+h,end:p+n});p+=n;}return out;}
+ function children(b){return boxes(b.start,b.end);}
+ function one(list,type){const x=list.filter(b=>b.type===type);check(x.length===1,"missing/ambiguous "+type);return x[0];}
+ function scale(b){const v=d.getUint8(b.start);check(v===0||v===1,"unsupported header version");const p=b.start+(v===1?20:12);check(p+4<=b.end,"truncated timescale");const n=u(p);check(n>0,"invalid timescale");return n;}
+ const moov=one(boxes(0,bytes.byteLength),"moov"),mc=children(moov),movie=scale(one(mc,"mvhd"));const tracks=mc.filter(b=>b.type==="trak").map(t=>{const c=children(t),md=children(one(c,"mdia")),h=one(md,"hdlr");check(h.start+12<=h.end,"truncated handler");return {c,md,type:four(h.start+8)};});
+ const aud=tracks.filter(t=>t.type==="soun");check(aud.length===1,"audio track identity");
+ const media=scale(one(aud[0].md,"mdhd")),ed=aud[0].c.filter(b=>b.type==="edts");
+ if(!ed.length)return {present:false,movie_timescale:movie,media_timescale:media,entries:[]};
+ check(ed.length===1,"multiple edit boxes");const e=one(children(ed[0]),"elst"),v=d.getUint8(e.start);check(v===0||v===1,"unsupported edit version");check(e.start+8<=e.end,"truncated elst");
+ const n=u(e.start+4),stride=v===1?20:12;check(n<=8&&e.start+8+n*stride===e.end,"edit entry size");const entries=[];
+ for(let j=0;j<n;j++){const p=e.start+8+j*stride,seg=v===1?u64(p):u(p),mt=v===1?i64(p+8):i(p+4),rate=i(p+(v===1?16:8))/65536;entries.push({duration_s:seg/movie,media_time_s:mt===-1?null:mt/media,media_rate:rate});}
+ return {present:true,movie_timescale:movie,media_timescale:media,entries};
+}
+function presentationCheck(edit,pFirst,pEnd,dFirst,dEnd){
+ const near=(x,y,t)=>Number.isFinite(x)&&Math.abs(x-y)<=t;
+ const raw=Number.isFinite(pFirst)&&Number.isFinite(dFirst)&&pFirst<=.05&&dFirst<=.05&&near(pEnd,D,.1)&&near(dEnd,D,.1);
+ if(!raw)return false;
+ if(pFirst<-.0001||dFirst<-.0001){
+  if(!edit.present||edit.entries.length!==1)return false;
+  const e=edit.entries[0];
+  return e.media_rate===1&&e.media_time_s>0&&near(-pFirst,e.media_time_s,.002)&&near(-dFirst,e.media_time_s,.002)&&near(e.duration_s,D,.1)&&dEnd>=D-1/SR;
+ }
+ return !edit.present&&near(pFirst,0,.05)&&near(dFirst,0,.05);
+}
+const sha256=async b=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",await b.arrayBuffer())),n=>n.toString(16).padStart(2,"0")).join("");
+function dbOpen(){return deadline(new Promise((resolve,reject)=>{const r=indexedDB.open(DBNAME,1);r.onupgradeneeded=()=>r.result.createObjectStore("segments",{keyPath:"id"});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);r.onblocked=()=>reject(Error("IndexedDB blocked"));}),15000,"checkpoint open");}
+async function dbOp(mode,fn){
+ const db=await dbOpen();try{return await deadline(new Promise((resolve,reject)=>{const tx=db.transaction("segments",mode);let req;try{req=fn(tx.objectStore("segments"));}catch(e){tx.abort();reject(e);return;}tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error||req.error);tx.onabort=()=>reject(tx.error||Error("checkpoint transaction aborted"));}),20000,"checkpoint transaction");}finally{db.close();}
+}
+const getPart=id=>dbOp("readonly",o=>o.get(id));
+const putPart=rec=>dbOp("readwrite",o=>o.add(rec));
+const keys=()=>dbOp("readonly",o=>o.getAllKeys());
+async function refreshSaved(){try{const k=await keys();$("saved").textContent="保存区間："+k.length+" / "+PARTS+"（再開時にSHA検証）";}catch(e){$("saved").textContent="保存領域エラー："+String(e);}}
+function frameIndex(t,start){const x=(t-start)*FPS,n=Math.round(x);check(Math.abs(x-n)<0.015&&n>=0&&n<SEG,"off-grid segment timestamp: "+t);return n;}
+function validRecord(r,id){return r?.id===id&&r.recipe===RECIPE&&r.identity===IDENTITY&&r.start===id*SEG&&r.count===SEG&&r.blob instanceof Blob&&r.blob.size===r.bytes&&r.bytes>1024&&r.bytes<=MAX_PART&&/^[0-9a-f]{64}$/.test(r.sha256);}
+async function configSignature(c){
+ check(c&&c.description&&c.codec&&c.codedWidth===W&&c.codedHeight===H,"missing AVC decoder config");
+ const desc=c.description instanceof ArrayBuffer?new Uint8Array(c.description):new Uint8Array(c.description.buffer,c.description.byteOffset,c.description.byteLength);
+ return JSON.stringify([c.codec,c.codedWidth,c.codedHeight,c.displayAspectWidth??null,c.displayAspectHeight??null,c.colorSpace?.primaries??null,c.colorSpace?.transfer??null,c.colorSpace?.matrix??null,c.colorSpace?.fullRange??null,await sha256(new Blob([desc]))]);
+}
+
+async function inspectPart(m,r,id,guard){
+ check(validRecord(r,id),"invalid checkpoint "+id);check(await sha256(r.blob)===r.sha256,"checkpoint SHA mismatch "+id);
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack();check(v&&!(await input.getPrimaryAudioTrack()),"segment track mismatch");
+  const sig=await configSignature(await v.getDecoderConfig());
+  check(await v.getCodec()==="avc"&&await v.getDisplayWidth()===W&&await v.getDisplayHeight()===H,"segment resolution/codec");
+  check(Math.abs(await v.computeDuration()-SEGSEC)<.005,"segment duration");
+  const first=await v.getFirstTimestamp();check(Math.abs(first)<.002,"segment first PTS");
+  const hashes=[],seen=new Set();let packets=0;
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&Math.abs(p.duration-1/FPS)<.002,"segment PTS");
+   if(!packets)check(n===0&&p.type==="key","segment first keyframe");
+   seen.add(n);hashes[n]=await hashBytes(p.data);packets++;
+  }
+  check(packets===SEG&&seen.size===SEG,"segment packet count");
+  if(r.packet_hashes)check(r.packet_hashes.length===SEG&&hashes.every((x,i)=>x===r.packet_hashes[i]),"checkpoint packet hashes differ");
+  const frames=[],diffs=[null],sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  for await(const f of sink.canvases()){
+   guard();const n=frames.length;check(n<SEG&&Math.abs(f.timestamp-first-n/FPS)<.002,"segment decoded PTS");
+   const x=thumb(f.canvas),st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"segment invalid pixels");
+   if(n)diffs.push(mad(frames[n-1],x));frames.push(x);
+  }
+  check(frames.length===SEG,"segment decoded count");
+  const motion=summarizeMotion(diffs);let slow=null;
+  if(id===0){slow=await verifySlow(m,v,first,r,guard);check(slow.pass,"slow-motion decoded evidence FAIL "+JSON.stringify(slow));}
+  else check(motion.pass&&motion.static_frames===0,"segment motion gate "+id);
+  const jumps=diffs.flatMap((x,k)=>k>1&&k<SEG-1&&!jumpGate(x,[diffs[k-1],diffs[k+1]])?[k]:[]);check(!jumps.length,"segment internal jump");
+  let assessment;
+  check(r.imported!==true,"foreign scene import prohibited");
+  {
+   check(Array.isArray(r.raw)&&r.raw.length===SEG,"missing raw QA thumbnails");
+   const base=assess(r.raw,frames),q=id===0?slowAdjustedAssessment(base,slow):base;check(q.status==="TECHNICAL_CANDIDATE","input/output segment QA "+id+" "+JSON.stringify(compactAssessment(q)));assessment={...compactAssessment(q),...(slow?{slow_motion_qa:slow}:{})};
+  }
+  return {frames,hashes,meta:{id,frames:SEG,bytes:r.bytes,sha256:r.sha256,config_signature:sig,visual:assessment}};
+ }finally{input.dispose();}
+}
+async function muxPart(m,r,id,expected,guard,consume){
+ check(validRecord(r,id)&&r.sha256===expected.meta.sha256&&await sha256(r.blob)===r.sha256,"mux source changed");
+ const input=new m.Input({source:new m.BlobSource(r.blob),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),cfg=await v.getDecoderConfig(),sig=await configSignature(cfg),first=await v.getFirstTimestamp();
+  check(sig===expected.meta.config_signature,"mux config changed");let count=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=frameIndex(p.timestamp,first);check(!seen.has(n)&&await hashBytes(p.data)===expected.hashes[n],"mux packet changed");seen.add(n);
+   await consume(p,n,cfg,sig,count++);
+  }check(count===SEG,"mux segment count");
+ }finally{input.dispose();}
+}
+async function persist(rec,q){
+ rec.packet_hashes=q.hashes;await putPart(rec);const r=await getPart(rec.id);
+ check(validRecord(r,rec.id)&&await sha256(r.blob)===rec.sha256&&JSON.stringify(r.packet_hashes)===JSON.stringify(q.hashes),"checkpoint readback mismatch");
+ if(rec.id===0){check(r.slow_grid.length===SLOW_CONTEXT+1&&JSON.stringify(r.slow_grid_sha)===JSON.stringify(rec.slow_grid_sha)&&JSON.stringify(r.slow_raw_sha)===JSON.stringify(rec.slow_raw_sha),"slow checkpoint metadata");for(let i=0;i<=SLOW_CONTEXT;i++)check(await hashBytes(r.slow_grid[i])===rec.slow_grid_sha[i],"slow checkpoint bytes");}
+}
+function directCaptureAdapter(ctx){const {T,renderer,device,post,pose,camera,focusDepth}=ctx;return {async diagnose(guard,data,consume,id){
+    const prior=renderer.getRenderTarget(),bytes=W*H*4;
+    check(W*4%256===0&&bytes===8294400,"unexpected diagnostic dimensions");
+    let rt=null,staging=null;
+    const frames=[],details=[],renderTimes=[],readTimes=[];data.gpu.frames=details;
+    try{
+      rt=new T.RenderTarget(W,H,{format:T.RGBAFormat,type:T.UnsignedByteType,colorSpace:T.NoColorSpace,depthBuffer:false,stencilBuffer:false,samples:0,generateMipmaps:false});
+      staging=device.createBuffer({size:bytes,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
+      renderer.setRenderTarget(rt);
+      for(let j=0;j<SEG;j++){
+        guard();check(!ctx.lost&&!ctx.gpuError,ctx.gpuError||"device lost");
+        const index=id*SEG+j;let t=performance.now();pose(index);
+        post.render();await deadline(renderer.waitForGPU(),20000,"diagnostic GPU completion");renderTimes.push(performance.now()-t);guard();t=performance.now();
+        const tex=renderer.backend.get(rt.texture).texture;
+        check(tex&&tex.format==="rgba8unorm"&&tex.sampleCount===1&&(tex.usage&GPUTextureUsage.COPY_SRC)&&tex.width===W&&tex.height===H,"unexpected GPU target format/usage");
+        const cmd=device.createCommandEncoder();
+        cmd.copyTextureToBuffer({texture:tex},{buffer:staging,bytesPerRow:W*4,rowsPerImage:H},{width:W,height:H,depthOrArrayLayers:1});
+        device.queue.submit([cmd.finish()]);
+        try{
+          await deadline(staging.mapAsync(GPUMapMode.READ),20000,"diagnostic map");readTimes.push(performance.now()-t);guard();
+          const pixels=new Uint8Array(staging.getMappedRange());
+          const small=reduceRGBA(pixels),stats=visualStats(small);
+          const hash=await deadline(hashBytes(pixels),10000,"GPU pixel SHA");guard();
+          details.push({local_frame:j,global_frame:index,timestamp_s:index/FPS,camera:camera.position.toArray(),focus_depth:focusDepth.value,sha256:hash,mean:round(stats.mean),sd:round(stats.sd),adjacent_mad:j?round(mad(frames[j-1],small)):null});
+          frames.push(small);
+          if(consume)await consume(pixels,small,j,hash);guard();
+        }finally{if(staging.mapState==="mapped")staging.unmap();}
+        check(!ctx.lost&&!ctx.gpuError,ctx.gpuError||"device lost");
+        $("status").textContent="区間 "+(id+1)+"/5｜"+(id*SEG+j+1)+" / 900F";if(j%10===0){await delay();}if(j>0&&j%30===0)await new Promise(r=>setTimeout(r,80));
+      }
+      const motion=details.slice(1).map(x=>x.adjacent_mad);
+      return {status:details.every(x=>x.sd>2)&&motion.every(x=>x>=.1)?"NORMAL":"ABNORMAL",frames:details,copy_bytes:bytes*SEG,render_timing:summary(renderTimes),readback_timing:summary(readTimes),explicit_target_and_staging_bytes:bytes*2,format:"rgba8unorm",qualification:"separate render target; not direct canvas equivalence"};
+    }finally{renderer.setRenderTarget(prior);if(staging){if(staging.mapState==="mapped")staging.unmap();staging.destroy();}rt?.dispose();}
+  }};}
+function summary(a){if(!a?.length)return null;const b=[...a].sort((x,y)=>x-y);return {mean_ms:Number((a.reduce((s,x)=>s+x,0)/a.length).toFixed(2)),p95_ms:Number(b[Math.min(b.length-1,Math.floor(b.length*.95))].toFixed(2)),max_ms:Number(b[b.length-1].toFixed(2))};}
+
+
+function summarizeRawDiagnostic(rows){
+ const transitions=rows.slice(1),bad=rows.filter(x=>x.sd<=2),low=transitions.filter(x=>x.adjacent_mad<.1),same=transitions.filter((x,i)=>x.sha256===rows[i].sha256);
+ return {frames:rows.length,distinct_hashes:new Set(rows.map(x=>x.sha256)).size,sd_fail_frames:bad.map(x=>x.global_frame),low_mad_frames:low.map(x=>x.global_frame),identical_rgba_frames:same.map(x=>x.global_frame),min_sd:Math.min(...rows.map(x=>x.sd)),min_thumbnail_mad:Math.min(...transitions.map(x=>x.adjacent_mad)),max_thumbnail_mad:Math.max(...transitions.map(x=>x.adjacent_mad)),min_sample_mad:Math.min(...transitions.map(x=>x.sample_mad)),sample_grid:"RGB every 16px, 8160 points, not full pixel diff",samples:rows.filter(x=>x.local_frame<12||[30,60,90,120,150,179].includes(x.local_frame)).map(({sha256,...x})=>({...x,sha_prefix:sha256.slice(0,16)}))};
+}
+async function diagnoseFirst(){
+ if(active)return;active=true;aborted=false;go.disabled=true;$("diagnostic").disabled=true;$("check").disabled=true;stop.disabled=false;stop.hidden=false;const inputs=[$("wav"),$("ref"),$("zip")];inputs.forEach(x=>x.disabled=true);
+ const begin=performance.now(),data={version:"V13",scope:"FIRST_SEGMENT_RAW_DIAGNOSTIC",status:"RUNNING",video_generated:false,checkpoint_written:false,encoder_used:false,production_pass:false,thresholds:{sd_gt:2,thumbnail_mad_gte:.1},recipe:RECIPE};let gpu=null,previous=null;const extra=[];
+ const guard=()=>{check(!aborted,"stopped");check(!document.hidden,"Safari background");check(performance.now()-begin<120000,"diagnostic timeout");};
+ try{
+  generationGate();const file=$("wav").files[0];check(file,"原曲WAVを選択してください");data.audio=await readSource(file);guard();
+  gpu=await gpuSetup();data.preflight=await gpu.preflight(0);await gpu.frame(0);await delay();await gpu.frame(0);guard();
+  const metrics=await gpu.diagnose(guard,{gpu:{}},async(pixels,small,j,hash)=>{
+   const now=new Uint8Array(120*68*3);let k=0;for(let y=0;y<H;y+=16)for(let x=0;x<W;x+=16){const i=(y*W+x)*4;now[k++]=pixels[i];now[k++]=pixels[i+1];now[k++]=pixels[i+2];}
+   let sum=0,changed=0,max=0;if(previous){for(let i=0;i<now.length;i++){const d=Math.abs(now[i]-previous[i]);sum+=d;if(d)changed++;max=Math.max(max,d);}}extra[j]={sample_mad:previous?sum/now.length:null,sample_changed_fraction:previous?changed/now.length:null,sample_max_delta:previous?max:null};previous=now;progress.value=j+1;
+  },0);
+  const rows=metrics.frames.map((x,i)=>({...x,...extra[i]}));data.raw_gate=metrics.status;data.raw=summarizeRawDiagnostic(rows);data.camera_first=rows[0].camera;data.camera_last=rows.at(-1).camera;data.render_timing=metrics.render_timing;data.status="DIAGNOSTIC_COMPLETE";$("status").textContent="診断完了。JSONを送信してください。";
+ }catch(e){data.status="DIAGNOSTIC_FAIL";data.error=String(e);$("status").textContent=data.error;}
+ finally{gpu?.destroy();data.elapsed_s=(performance.now()-begin)/1000;show(data);active=false;go.disabled=!GENERATION_ALLOWED;$("diagnostic").disabled=false;$("check").disabled=false;stop.disabled=true;inputs.forEach(x=>x.disabled=false);}
+}
+
+async function renderPart(m,id,data,guard){
+ generationGate();
+ let gpu=null,output=null,finalized=false;const enc=[],raw=[],slowGrid=[],slowGridSHA=[],slowRawSHA=[];const began=performance.now();
+ const tmp={gpu:{}};
+ try{
+  guard();data.stage="gpu_init";gpu=await gpuSetup();data.backend=gpu.backend;data.effects=gpu.effects;
+  data.stage="precompile";data.preflight=await gpu.preflight(id*SEG);guard();
+  // Match the validated V11j warmup before encoder initialization.
+  await gpu.frame(id*SEG);await delay();await gpu.frame(id*SEG);guard();
+  data.stage="segment_encode_init";
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.VideoSampleSource({codec:"avc",fullCodecString:"avc1.640028",bitrate:8000000,keyFrameInterval:1,latencyMode:"quality"});
+  output.addVideoTrack(vs,{frameRate:FPS});await deadline(output.start(),20000,"segment start");
+  data.stage="direct_render";
+  const metrics=await gpu.diagnose(guard,tmp,async(pixels,small,j,hash)=>{
+   guard();check(j===raw.length&&pixels.length===FRAME_BYTES,"input order or size");
+   if(id===0&&j<=SLOW_CONTEXT){const a=highGrid(pixels);slowGrid.push(a);slowGridSHA.push(await hashBytes(a));slowRawSHA.push(hash);}
+   const t=performance.now(),sample=new m.VideoSample(pixels,{format:"RGBA",codedWidth:W,codedHeight:H,timestamp:j/FPS,duration:1/FPS});
+   try{await deadline(vs.add(sample,j===0?{keyFrame:true}:undefined),20000,"direct encode");raw.push(small);}finally{sample.close();}
+   enc.push(performance.now()-t);data.submitted=id*SEG+j+1;progress.value=data.submitted;
+  },id);
+  if(metrics.status!=="NORMAL"){const r=metrics.frames;data.motion_failure={segment:id,sd_fail_frames:r.filter(x=>x.sd<=2).map(x=>x.global_frame),low_mad_frames:r.slice(1).filter(x=>x.adjacent_mad<.1).map(x=>x.global_frame),distinct_hashes:new Set(r.map(x=>x.sha256)).size,identical_rgba_frames:r.slice(1).filter((x,i)=>x.sha256===r[i].sha256).map(x=>x.global_frame),min_sd:Math.min(...r.map(x=>x.sd)),min_mad:Math.min(...r.slice(1).map(x=>x.adjacent_mad)),max_mad:Math.max(...r.slice(1).map(x=>x.adjacent_mad)),first_frames:r.slice(0,12)};}
+  check(raw.length===SEG&&rawSlowGate(metrics.frames,id),"GPU motion gate");
+  gpu.destroy();gpu=null;guard();data.stage="segment_finalize";await deadline(output.finalize(),30000,"segment finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength>1024&&target.buffer.byteLength<=MAX_PART,"segment memory cap");
+  const part=new Blob([target.buffer],{type:"video/mp4"});
+  const rec={id,recipe:RECIPE,identity:IDENTITY,start:id*SEG,count:SEG,blob:part,bytes:part.size,sha256:await sha256(part),render_timing:metrics.render_timing,readback_timing:metrics.readback_timing,encode_timing:summary(enc),elapsed_s:round((performance.now()-began)/1000),raw,slow_grid:slowGrid,slow_grid_sha:slowGridSHA,slow_raw_sha:slowRawSHA};
+  data.stage="checkpoint_verify";const q=await inspectPart(m,rec,id,guard);guard();data.stage="checkpoint_commit";await persist(rec,q);
+  return {q,record:{...q.meta,render_timing:rec.render_timing,readback_timing:rec.readback_timing,encode_timing:rec.encode_timing,elapsed_s:rec.elapsed_s,source:"new",persisted_readback:true}};
+ }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel segment");}catch{}}if(gpu)gpu.destroy();}
+}
+async function assemble(m,data,guard,verified){
+ generationGate();
+ let output=null,finalized=false;
+ try{
+  const target=new m.BufferTarget();output=new m.Output({format:new m.Mp4OutputFormat(),target});
+  const vs=new m.EncodedVideoPacketSource("avc"),as=new m.AudioBufferSource({codec:"aac",bitrate:192000});
+  output.addVideoTrack(vs,{frameRate:FPS});output.addAudioTrack(as);await deadline(output.start(),20000,"assembly start");
+  let signature=null,sequence=0,audioSec=0;
+  for(let id=0;id<PARTS;id++){
+   guard();const rec=await getPart(id);
+   await muxPart(m,rec,id,verified[id],guard,async(pkt,n,cfg,sig,count)=>{
+    if(signature===null)signature=sig;
+    check(sig===signature,"AVC configuration differs across segments; safe stop, no remux");
+    await deadline(vs.add(pkt.clone({timestamp:(id*SEG+n)/FPS,duration:1/FPS,sequenceNumber:sequence++}),count===0?{decoderConfig:cfg}:undefined),20000,"packet mux");
+    // Interleave audio in approximately one-second steps to bound mux buffering.
+    while(audioSec<D&&audioSec<=Math.floor((id*SEG+count)/FPS)){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+   });
+   data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;show(data);await delay();
+  }
+  while(audioSec<D){guard();await deadline(as.add(audioBuffer(audioSec++)),20000,"audio mux");}
+  check(sequence===N&&audioSec===D,"assembly count mismatch");guard();
+  await deadline(output.finalize(),45000,"assembly finalize");finalized=true;
+  check(target.buffer&&target.buffer.byteLength<=MAX_FINAL&&target.buffer.byteLength>1024,"final memory cap or empty MP4");
+  data.muxed_video_packets=sequence;data.muxed_audio_seconds=audioSec;
+  return new Blob([target.buffer],{type:"video/mp4"});
+ }finally{if(output&&!finalized){try{await deadline(output.cancel(),3000,"cancel assembly");}catch{}}}
+}
+async function probeFile(m,b,verified,guard){
+ const input=new m.Input({source:new m.BlobSource(b),formats:m.ALL_FORMATS});
+ try{
+  const v=await input.getPrimaryVideoTrack(),a=await input.getPrimaryAudioTrack();check(v&&a,"missing video/audio");
+  const [width,height,vc,ac,vd,ad,du,mime,first]=await Promise.all([v.getDisplayWidth(),v.getDisplayHeight(),v.getCodec(),a.getCodec(),v.computeDuration(),a.computeDuration(),input.computeDuration(),input.getMimeType(),v.getFirstTimestamp()]);
+  check(width===W&&height===H&&vc==="avc"&&ac==="aac"&&Math.abs(first)<.002,"final stream metadata mismatch");
+  check(await configSignature(await v.getDecoderConfig())===verified[0].meta.config_signature,"final AVC configuration mismatch");
+  let packets=0;const seen=new Set();
+  for await(const p of new m.EncodedPacketSink(v).packets(undefined,undefined,{verifyKeyPackets:true})){
+   guard();const n=Math.round((p.timestamp-first)*FPS);
+   check(n>=0&&n<N&&!seen.has(n)&&Math.abs(p.timestamp-first-n/FPS)<.002&&Math.abs(p.duration-1/FPS)<.002,"final video PTS grid");
+   check(await hashBytes(p.data)===verified[Math.floor(n/SEG)].hashes[n%SEG],"final packet SHA mismatch F"+n);
+   if(n%SEG===0)check(p.type==="key","final boundary keyframe missing");
+   seen.add(n);packets++;
+  }
+  check(packets===N&&seen.size===N,"final video packet count");
+  const sink=new m.CanvasSink(v,{width:THUMB_W,height:THUMB_H,fit:"contain"});
+  const changes=[null],diffs=[];let n=0,prev=null;
+  for await(const f of sink.canvases()){
+   guard();check(n<N&&Math.abs(f.timestamp-first-n/FPS)<.002,"final decoded PTS "+n);
+   const x=thumb(f.canvas),d=mad(x,verified[Math.floor(n/SEG)].frames[n%SEG]);
+   diffs.push(d);check(d<=1,"final frame differs from verified segment F"+n);
+   const st=visualStats(x);check(st.sd>2&&st.mean>5&&st.mean<250,"final invalid pixels F"+n);
+   if(prev)changes.push(mad(prev,x));prev=x;n++;
+  }
+  check(n===N,"final decoded count");
+  const boundaries=[];for(let id=1;id<PARTS;id++){const k=id*SEG;boundaries.push({frame:k,mad:round(changes[k]),left:round(changes[k-1]),right:round(changes[k+1]),pass:boundaryGate(changes[k],changes[k-1],changes[k+1])});}
+  const lowFrames=changes.flatMap((x,i)=>i>0&&x<.1?[i]:[]);const slow=verified[0].meta.visual.slow_motion_qa;check(slow?.pass,"missing first-section evidence");const finalSlow=await decodeSlow(m,v,first,guard);check(finalSlow.hashes.every((x,i)=>x===slow.decoded_hashes[i]),"final slow-motion decoded SHA mismatch");const statics=lowFrames.filter(i=>i>SLOW_END).length;
+  const jumps=changes.flatMap((x,k)=>k>1&&k<N-1&&!jumpGate(x,[changes[k-1],changes[k+1]])?[k]:[]);
+  let audioPackets=0,apFirst=null,apEnd=null,maxPacketGap=0;
+  for await(const p of new m.EncodedPacketSink(a).packets()){
+   guard();if(apFirst===null)apFirst=p.timestamp;
+   if(apEnd!==null)maxPacketGap=Math.max(maxPacketGap,Math.abs(p.timestamp-apEnd));
+   apEnd=p.timestamp+p.duration;audioPackets++;
+  }
+  let samples=0,aFirst=null,aEnd=null,maxGap=0,rate=null,channels=null;
+  const meter=audioMeter(),edit=audioEdit(await b.arrayBuffer());
+  for await(const z of new m.AudioSampleSink(a).samples()){
+   try{
+    guard();if(aFirst===null)aFirst=z.timestamp;
+    if(aEnd!==null)maxGap=Math.max(maxGap,Math.abs(z.timestamp-aEnd));
+    aEnd=z.timestamp+z.duration;samples++;
+    const buf=z.toAudioBuffer();rate=buf.sampleRate;channels=buf.numberOfChannels;meterBlock(meter,buf,z.timestamp);
+   }finally{z.close();}
+  }
+  const wave=assessAudio(meter);
+  const checks={format:audioPackets>0&&samples>0&&rate===SR&&channels===2,raw_continuity:maxPacketGap<=.002&&maxGap<=.002,edit_presentation:presentationCheck(edit,apFirst,apEnd,aFirst,aEnd),pcm_coverage:wave.coverage_pass,real_pcm_alignment:wave.pass};
+  const audioPass=Object.values(checks).every(Boolean);
+  return {visual:{pass:statics===0&&jumps.length===0&&boundaries.every(x=>x.pass),decoded_frames:n,static_frames:statics,thumbnail_low_mad_frames:lowFrames,slow_motion_verified_frames:lowFrames.filter(i=>i<=SLOW_END),slow_decoded_hashes_verified:finalSlow.hashes.length,jump_frames:jumps,boundaries,max_segment_to_final_mad:round(Math.max(...diffs)),packet_hashes_verified:packets},audio:{pass:audioPass,packets:audioPackets,decoded_samples:samples,sample_rate:rate,channels,first_timestamp:aFirst,end_timestamp:aEnd,packet_first_timestamp:apFirst,packet_end_timestamp:apEnd,max_packet_gap_s:maxPacketGap,max_decoded_gap_s:maxGap,edit_list:edit,presentation_start_s:checks.edit_presentation?0:null,waveform:wave,checks},packets,audio_packets:audioPackets,width,height,duration:du,video_duration:vd,audio_duration:ad,average_fps:packets/vd,mime,video_codec:vc,audio_codec:ac,avc:vc==="avc",aac:ac==="aac",bytes:b.size,sha256:await sha256(b)};
+ }finally{input.dispose();}
+}
+
+function metadataCheck(){
+ return deadline(new Promise((res,rej)=>{
+ const ready=()=>res({width:video.videoWidth,height:video.videoHeight,duration:video.duration});
+ video.addEventListener("loadedmetadata",ready,{once:true});
+ video.addEventListener("error",()=>rej(Error("Safari MP4 metadata read failed")),{once:true});
+ video.src=url;video.load();
+ if(video.readyState>=1)ready();
+ }),15000,"Safari MP4 metadata");
+}
+async function run(){
+ generationGate();check(preflightOK&&sourcePCM&&envelope,"select and verify WAV first");check(storageGate(await navigator.storage.estimate()).pass,"storage gate");
+ if(active)return;active=true;aborted=false;go.disabled=true;stop.disabled=false;stop.hidden=false;$("save").hidden=true;$("share").hidden=true;
+ if(url){video.removeAttribute("src");video.load();URL.revokeObjectURL(url);url=null;}blob=null;video.hidden=true;
+ const begin=performance.now();
+ const data={version:"V13",stage:"init",scope:"real_music_v04_30s_trial",recipe:RECIPE,requested:{width:W,height:H,fps:FPS,frames:N,seconds:D,video:"H.264",audio:"AAC-LC real PCM",segments:PARTS,segment_seconds:SEGSEC},status:"RUNNING",media_generated:false,playback:"UNVERIFIED",submitted:0,committed_frames:0,segments:[],old_db_access:false,production_pass:false,explicit_full_frame_cpu_readback:true,thumbnail_readback:"128x72 GPU input and decoded output all frames",planned_cumulative_copy_bytes:N*FRAME_BYTES,memory_policy:{max_segment_bytes:MAX_PART,max_final_bytes:MAX_FINAL,gpu_release_each_segment:true,actual_memory_usage:"UNMEASURABLE_IN_SAFARI"}};
+ const guard=()=>{check(!aborted,"stopped by user");check(performance.now()-begin<300000,"5 minute processing limit; resume saved segments");check(!document.hidden,"Safari moved to background");};
+ show(data);progress.value=0;
+ async function work(){
+  guard();const m=await deadline(import("https://cdn.jsdelivr.net/npm/mediabunny@1.66.2/+esm"),30000,"Mediabunny");
+  for(const k of ["Output","Mp4OutputFormat","BufferTarget","VideoSampleSource","VideoSample","AudioBufferSource","AudioSampleSink","Input","BlobSource","EncodedVideoPacketSource","EncodedPacketSink","CanvasSink"])check(typeof m[k]==="function","missing "+k);
+  data.stage="checkpoint_scan";const saved=await keys();check(saved.every(k=>Number.isInteger(k)&&k>=0&&k<PARTS),"unexpected checkpoint key");
+  // Require a contiguous prefix; never silently replace or rerender corrupted entries.
+  check(saved.every((k,i)=>k===i),"noncontiguous checkpoint prefix");
+  const verified=[];
+  for(let id=0;id<PARTS;id++){
+   guard();const r=await getPart(id);
+   if(r){data.stage="checkpoint_resume";const q=await inspectPart(m,r,id,guard);verified.push(q);data.segments.push({...q.meta,source:"reused",render_timing:r.render_timing,readback_timing:r.readback_timing,encode_timing:r.encode_timing,elapsed_s:r.elapsed_s});}
+   else{const q=await renderPart(m,id,data,guard);verified.push(q.q);data.segments.push(q.record);}
+   if(id>0){const left=verified[id-1].frames,right=verified[id].frames,edge=mad(left[SEG-1],right[0]);check(boundaryGate(edge,mad(left[SEG-2],left[SEG-1]),mad(right[0],right[1])),"checkpoint boundary gate at "+id*SEG);}
+   data.committed_frames=(id+1)*SEG;data.submitted=data.committed_frames;progress.value=data.committed_frames;show(data);await refreshSaved();
+   await new Promise(r=>setTimeout(r,300));
+  }
+  guard();data.stage="assemble";$("status").textContent="5区間を再エンコードなしで結合中";show(data);
+  blob=await assemble(m,data,guard,verified);data.media_generated=true;guard();
+  data.stage="verify";data.file=await deadline(probeFile(m,blob,verified,guard),120000,"final MP4 QA");
+  data.technical_pass=evaluate(data.file)&&data.file.visual.pass===true&&data.file.audio.pass===true;check(data.technical_pass,"MP4 technical/visual boundary QA mismatch");
+  url=URL.createObjectURL(blob);video.hidden=false;data.safari_metadata=await metadataCheck();
+  check(data.safari_metadata.width===W&&data.safari_metadata.height===H&&Math.abs(data.safari_metadata.duration-D)<=0.10,"Safari metadata mismatch");
+  data.stage="complete";data.status="PASS_TECHNICAL_PLAYBACK_PENDING";data.playback="USER_CHECK_REQUIRED";
+  $("save").href=url;$("save").hidden=false;$("share").hidden=false;
+  $("status").textContent="30秒MP4検査合格。再生・保存してください。区間データは保持してください。";
+ }
+ try{
+  if(navigator.locks){await navigator.locks.request(DBNAME,{ifAvailable:true},async lock=>{check(lock,"V13 is running in another tab");await work();});}
+  else await work();
+ }catch(e){data.status=aborted?"STOPPED":data.stage==="precompile"?"PRECOMPILE_FAIL":"FAIL";data.error=String(e);if(e.preflight)data.preflight=e.preflight;$("status").textContent=data.status+"｜"+data.error+"｜保存済み区間は保持";}
+ finally{data.elapsed_s=Number(((performance.now()-begin)/1000).toFixed(2));show(data);active=false;go.disabled=!GENERATION_ALLOWED;stop.disabled=true;await refreshSaved();}
+}
+
+
+const njStage=(()=>{
+const require=(v,m)=>{if(!v)throw new Error(m);};
+const types={'<f8':Float64Array,'<f4':Float32Array,'<i4':Int32Array,'<u4':Uint32Array};
+function bytes(a){return Uint8Array.from(atob(a.data),x=>x.charCodeAt(0));}
+function arr(a){return new types[a.dtype](bytes(a).buffer);}
+const xyz=([x,y,z])=>[x,z,-y];
+function mul(a,b){const [w,x,y,z]=a,[v,i,j,k]=b;return [w*v-x*i-y*j-z*k,w*i+x*v+y*k-z*j,w*j-x*k+y*v+z*i,w*k+x*j-y*i+z*v];}
+function cameraSpec(stage,id){const c=stage.actual_blend_cameras[id],o=stage.actual_blend_objects[id];require(c&&o&&c.sensor_fit===1,'camera not supported');const q=o['quat[4]'],n=Math.hypot(...q);return {id,position:xyz(o['loc[3]']),q:mul([Math.SQRT1_2,-Math.SQRT1_2,0,0],q.map(x=>x/n)),hfov:2*Math.atan(c.sensor_x/(2*c.lens)),shiftX:c.shiftx,shiftY:c.shifty,aspect:16/9,near:.05,far:100,calibration:id==='C01_WIDE'?'PARTIAL_WIDE_FIT':'NOT_CALIBRATED_TO_ART'};}
+function sceneData(payload){const {config:c,assets:a}=payload;require(c.project==='NanJaRo'&&c.generation_allowed===false,'render lock');const s=c.stage;const paper=arr(a['stage/paper_xyz_blender']),uv=arr(a['stage/paper_uv_topdown']),tri=arr(a['stage/paper_triangles']);const p=new Float32Array(paper.length);for(let i=0;i<p.length;i+=3)p.set(xyz(paper.subarray(i,i+3)),i);const cams=Object.fromEntries(Object.keys(s.actual_blend_cameras).map(k=>[k,cameraSpec(s,k)]));return {cams,paper:{positions:p,uvTopdown:uv,indices:tri},podiumScale:s.calibration.applied_overrides.CONDUCTOR_PODIUM.world_scale_y_about_floor,anchorC01:xyz(s.actual_blend_objects.ANCHOR_C01['loc[3]']),lights:s.calibration.lighting.stage_lights_unchanged,renderAllowed:false};}
+async function bindStage(T,GLTFLoader,scene,payload){const data=sceneData(payload),loader=new GLTFLoader();const glb=bytes(payload.assets['stage/v51.glb']);const model=await loader.parseAsync(glb.buffer,'');const root=model.scene;const podium=root.getObjectByName('CONDUCTOR_PODIUM');require(podium&&root.getObjectByName('PROP_PAPER'),'baseline objects missing');require(Math.abs(podium.scale.y-1)<1e-6,'unexpected podium transform');podium.scale.y*=data.podiumScale;const cameras={};for(const [id,s] of Object.entries(data.cams)){const vfov=2*Math.atan(Math.tan(s.hfov/2)/s.aspect)*180/Math.PI;const c=new T.PerspectiveCamera(vfov,s.aspect,s.near,s.far);c.name=id;c.position.set(...s.position);c.quaternion.set(s.q[1],s.q[2],s.q[3],s.q[0]);c.updateProjectionMatrix();c.projectionMatrix.elements[8]=2*s.shiftX;c.projectionMatrix.elements[9]=2*s.shiftY*s.aspect;c.projectionMatrixInverse.copy(c.projectionMatrix).invert();c.updateMatrixWorld(true);cameras[id]=c;}
+const geom=new T.BufferGeometry();geom.setAttribute('position',new T.BufferAttribute(data.paper.positions,3));const uv=data.paper.uvTopdown.slice();for(let i=1;i<uv.length;i+=2)uv[i]=1-uv[i];geom.setAttribute('uv',new T.BufferAttribute(uv,2));geom.setIndex(new T.BufferAttribute(data.paper.indices,1));geom.computeVertexNormals();const anchor=new T.Object3D();anchor.name='ANCHOR_C01';anchor.position.set(...data.anchorC01);root.add(anchor);scene.add(root);return {root,cameras,paperGeometry:geom,anchor,lightSpecs:data.lights,renderAllowed:false};}
+async function verify(T,scene,payload){const {GLTFLoader}=await import("three/addons/loaders/GLTFLoader.js");const stage=await bindStage(T,GLTFLoader,scene,payload);try{scene.updateMatrixWorld(true);const pos=stage.paperGeometry.getAttribute('position');require(pos.count===1426,'paper vertex count');const projection={};for(const [id,c] of Object.entries(stage.cameras)){const xy=arr(payload.assets['stage/'+id+'_xy']),depth=arr(payload.assets['stage/'+id+'_depth']);let maxPx=0,maxDepth=0;for(let i=0;i<pos.count;i++){const v=new T.Vector3().fromBufferAttribute(pos,i),z=-v.clone().applyMatrix4(c.matrixWorldInverse).z,q=v.clone().project(c);maxPx=Math.max(maxPx,Math.hypot((q.x+1)*480-xy[2*i],(1-q.y)*270-xy[2*i+1]));maxDepth=Math.max(maxDepth,Math.abs(z-depth[i]));}require(maxPx<.001&&maxDepth<.00001,'Three actual projection mismatch '+id);projection[id]={vertices:pos.count,max_px:maxPx,max_depth_m:maxDepth};}let meshes=0;stage.root.traverse(o=>{if(o.isMesh)meshes++;});require(meshes===13,'GLB mesh count');return {mesh_count:meshes,projection,light_descriptors:stage.lightSpecs.length,actor_world:'BLOCK_UNCALIBRATED',lights_applied:false,rendered:false};}finally{stage.paperGeometry.dispose();}}
+return {verify};
+})();
+
+$("njCheck").onclick=async()=>{const btn=$("njCheck");btn.disabled=true;let gpu=null;const report={status:"BLOCK",source:"V13 r180 original GPU initialization",rendered:false,encoded:false,checkpoint_written:false,iphone_playback:"UNVERIFIED"};try{const f=$("njPayload").files[0];check(f,"SUSHI_JARO_GPU_check_input.json を選択");const b=await f.arrayBuffer();check(await hashBytes(b)==="b9f00a35541b6500565e1037aa080a213e7de6090c322d5519a719666b3888d5","payload SHA mismatch");const p=JSON.parse(new TextDecoder().decode(b));check(p.config.project==="NanJaRo"&&p.config.generation_allowed===false,"project lock");gpu=await gpuSetup(true,p);report.backend=gpu.backend;report.stage=gpu.stage;report.status="PASS_STAGE_API_ONLY";}catch(e){report.error=String(e);}finally{gpu?.destroy();$("njStatus").textContent=report.status;$("njReport").value=JSON.stringify(report,null,2);btn.disabled=false;}};
+</script></body></html>
