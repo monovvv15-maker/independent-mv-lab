@@ -83,8 +83,8 @@ $('stop').onclick=()=>{stopped=true;$('status').textContent='停止要求を受�
 function guard(){require(!stopped,'stopped by user');require(!document.hidden,'Safari moved to background')}
 function notify(r){$('log').value=JSON.stringify(r,null,2);$('progress').value=r.submitted||0;$('status').textContent=r.status==='FAIL'?'停止：'+r.error:({input:'入力照合',encode_init:'H.264準備',render:'冒頭を描画・エンコード',segment_finalize:'映像区間確定',segment_QA:'150F区間検査',assemble:'原曲AACと無再エンコード結合',final_QA:'最終MP4検査',complete:'完了'}[r.stage]||r.stage)+' '+(r.submitted||0)+'/150F'}
 async function showResult(b,report){
- require(b instanceof Blob&&report.status==='PASS_TECHNICAL_PLAYBACK_PENDING','final result missing');
- resultUrl=URL.createObjectURL(b);const video=$('preview');video.hidden=false;
+ require(Object.prototype.toString.call(b)==='[object Blob]'&&b.size>1024&&b.type==='video/mp4'&&report.status==='PASS_TECHNICAL_PLAYBACK_PENDING','final result missing');
+ resultUrl=URL.createObjectURL(new Blob([b],{type:'video/mp4'}));const video=$('preview');video.hidden=false;
  const meta=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Safari metadata timeout')),15000);video.onloadedmetadata=()=>{clearTimeout(timer);resolve({width:video.videoWidth,height:video.videoHeight,duration:video.duration})};video.onerror=()=>{clearTimeout(timer);reject(Error('Safari MP4 metadata error'))};video.src=resultUrl;video.load()});
  require(meta.width===1920&&meta.height===1080&&Math.abs(meta.duration-5)<=.10,'Safari metadata mismatch');
  report.safari_metadata=meta;notify(report);$('save').href=resultUrl;$('save').hidden=false;$('status').textContent='技術検査合格。再生と美術を確認して保存してください。';$('retry').hidden=true;
@@ -104,7 +104,7 @@ async function launch(resume){
    require(typeof frame.contentWindow?.v12Run==='function','V12 engine missing');prepared=true;
   }
   const res=await $('adapter').contentWindow.v12Run(payload,bindNativeArt,verifiedWav,guard,notify,'動画生成開始',resume);
-  if(res.blob)await showResult(res.blob,res.report);
+  if(res.blob){try{await showResult(res.blob,res.report)}catch(e){$('retry').hidden=false;$('retry').disabled=false;throw e}}
   else{notify(res.report);$('retry').hidden=!res.report.can_resume_mux;$('retry').disabled=!res.report.can_resume_mux}
  }catch(e){$('status').textContent='停止：'+e.message;let prev={};try{prev=JSON.parse($('log').value)}catch{}$('log').value=JSON.stringify({...prev,status:'FAIL',error:String(e),playback:'UNVERIFIED'},null,2)}
  finally{busy=false;sync();$('stop').disabled=true}
