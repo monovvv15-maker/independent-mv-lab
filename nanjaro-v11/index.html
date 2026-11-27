@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src 'self' https://cdn.jsdelivr.net; frame-src 'self' about:; img-src blob: data:; media-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"><title>SUSHI-JARO！ V11｜冒頭制作準備</title><style>
+:root{color-scheme:light dark;font:100% system-ui}*{box-sizing:border-box}body{margin:0;line-height:1.65}main{max-width:44rem;margin:auto;padding:1rem}section{border:1px solid #888;border-radius:.75rem;padding:1rem;margin:1rem 0}button,input{font:inherit;max-width:100%}button{width:100%;min-height:48px;border:1px solid #777;border-radius:.5rem;margin:.4rem 0;padding:.5rem;background:#2057a5;color:white;font-weight:650}button:disabled{background:#666}label{display:block;font-weight:650}input[type=file]{width:100%;min-height:48px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}iframe{width:100%;height:25rem;border:1px solid #888;border-radius:.5rem}h1{font-size:1.5rem}h2{font-size:1.2rem}:focus-visible{outline:3px solid #b45500;outline-offset:3px}a{color:inherit}[hidden]{display:none!important}#status{padding:.5rem;border:1px solid #888;border-radius:.5rem}progress{width:100%}
+</style></head><body><main><h1>SUSHI-JARO！ V11｜冒頭150F制作準備</h1><p>固定C01の5秒試作範囲。既存GPUエンジンにSTEP3美術とV45人物を接続します。正式S01のカメラ移動・譜面歌詞・世界座標は未完成です。画像・動画生成は行いません。</p><section><h2>統合入力を選択</h2><label for="file">V11_native_input.json（既存素材の統合、44.2MB）</label><input id="file" type="file" accept=".json,application/json"><button id="prepare" disabled>制作準備を接続（描画なし）</button><p id="status" role="status" aria-live="polite">入力待ち</p></section><section><h2>接続結果</h2><button id="copy">結果をコピー</button><label for="log">技術報告</label><textarea id="log" readonly style="width:100%;min-height:200px"></textarea></section><iframe id="adapter" title="既存GPUエンジン" sandbox="allow-scripts allow-same-origin" hidden></iframe></main><script type="module" id="bridge">// New integration layer only. No render, encoder, storage or generated media.
+// Reuses the approved V06 bindActor function by injection from its pinned source.
+export const PINS=Object.freeze({art:'d60484c3c6830decaa37017cbb1b250a75b208883ca7bd1d2f6277cc6e27cf0d',actor:'6fa8ccc90b966b42384c79382e697f3c9ff0ee0271789ec769c871d7605a2036',sourceBlob:'fa7118ac6bfbbec8d078fcead21b42c76d18cc98'});
+const require=(p,m)=>{if(!p)throw Error(m)};
+const canon=x=>Array.isArray(x)?'['+x.map(canon).join(',')+']':x!==null&&typeof x==='object'?'{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+canon(x[k])).join(',')+'}':JSON.stringify(x);
+const hex=b=>Array.from(new Uint8Array(b),n=>n.toString(16).padStart(2,'0')).join('');
+async function sha(b){return hex(await crypto.subtle.digest('SHA-256',b))}
+export async function mergeInputs(artBytes,actorBytes){
+ require(await sha(artBytes)===PINS.art,'STEP3 source SHA');require(await sha(actorBytes)===PINS.actor,'V06 actor source SHA');
+ const a=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(artBytes)),b=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(actorBytes));
+ require(a.config.project==='NanJaRo'&&b.config.project==='NanJaRo'&&a.config.generation_allowed===false&&b.config.generation_allowed===false,'project/render lock');
+ for(const k of ['stage','actor','light_policy'])require(canon(a.config[k])===canon(b.config[k]),'shared contract mismatch '+k);
+ require(a.config.art_calibration.camera==='C01_WIDE'&&a.config.still.camera==='C01_WIDE'&&a.config.actor.window.join(',')==='0,150','native window');
+ for(const [k,v] of Object.entries(b.assets))if(k.startsWith('stage/'))require(canon(a.assets[k])===canon(v),'shared stage asset mismatch '+k);
+ const assets={...a.assets};for(const k of ['actor/rest_xy','actor/deformed_xy','actor/relative_depth','actor/triangles','actor/rgba_roi']){require(!assets[k]&&b.assets[k],'actor asset '+k);assets[k]=b.assets[k]}
+ return {config:{...a.config,generation_allowed:false,v10:{camera:'C01_WIDE',start:0,end_exclusive:150,mode:'NATIVE_HYBRID_CANDIDATE',world:'BLOCK_UNCALIBRATED',render_allowed:false}},assets};
+}
+// Native screen planes use the same coordinate convention as V06's actor.
+// Separate scenes prevent the source plate from writing depth against the actor.
+export function bindNativeArt(T,payload,existingBindActor,decode){
+ const c=payload.config;require(c.generation_allowed===false&&c.v10?.render_allowed===false&&c.v10.camera==='C01_WIDE','generation/camera lock');
+ require(typeof existingBindActor==='function'&&typeof decode==='function','existing V06 API required');
+ const [w,h]=c.actor.source_size_wh;require(w===1672&&h===941,'source coordinate contract');
+ const camera=new T.OrthographicCamera(-1,1,1,-1,.01,2);camera.position.z=1;camera.updateMatrixWorld(true);
+ const plateScene=new T.Scene(),zeroScene=new T.Scene();const resources=[];let actor;
+ function quad(asset,rect,scene){
+  const [x0,y0,x1,y1]=rect,rw=x1-x0,rh=y1-y0,raw=decode(asset);require(raw.length===rw*rh*4,'RGBA shape');
+  const tex=new T.DataTexture(raw,rw,rh,T.RGBAFormat,T.UnsignedByteType);tex.colorSpace=T.SRGBColorSpace;tex.flipY=false;tex.minFilter=T.LinearFilter;tex.magFilter=T.LinearFilter;tex.needsUpdate=true;resources.push(tex);
+  const g=new T.BufferGeometry();resources.push(g);const xy=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].flatMap(([x,y])=>[2*x/w-1,1-2*y/h,0]);
+  g.setAttribute('position',new T.Float32BufferAttribute(xy,3));g.setAttribute('uv',new T.Float32BufferAttribute([0,0,1,0,1,1,0,1],2));g.setIndex([0,2,1,0,3,2]);
+  const mat=new T.MeshBasicMaterial({map:tex,transparent:true,alphaTest:.001,depthTest:false,depthWrite:false,toneMapped:false,side:T.DoubleSide});resources.push(mat);const mesh=new T.Mesh(g,mat);mesh.frustumCulled=false;scene.add(mesh);return mesh;
+ }
+ try{
+  const plate=quad(payload.assets['art/screen_rgba'],[0,0,w,h],plateScene);
+  const zero=quad(payload.assets['still/frame0_rgba'],c.still.roi,zeroScene);
+  actor=existingBindActor(T,payload);require(actor.overlay&&actor.camera&&actor.mesh&&typeof actor.pose==='function'&&typeof actor.dispose==='function','V06 actor API');
+  function frame(f,view){
+   require(view==='C01_WIDE'&&Number.isInteger(f)&&f>=0&&f<150,'unavailable camera or motion; no loop');
+   actor.pose(f);zero.visible=f===0;require(actor.mesh.visible===(f!==0),'F0 actor override mismatch');
+   return {frame:f,world_camera:view,passes:[{id:'STEP3_NATIVE_PLATE',scene:plateScene,camera},{id:f===0?'F0_ORIGINAL_CUTOUT':'V45_NATIVE_MOTION',scene:f===0?zeroScene:actor.overlay,camera:f===0?camera:actor.camera}],render_allowed:false,world_actor:'BLOCK_UNCALIBRATED',art:'REVIEW_REQUIRED'};
+  }
+  return Object.freeze({frame,dispose(){actor.dispose();for(const r of resources)r.dispose();plateScene.remove(plate);zeroScene.remove(zero)}});
+ }catch(e){actor?.dispose();for(const r of resources)r.dispose();throw e}
+}
+// Prepare an additive source patch, not an executable page or a change to the original.
+// Call only when integrating a later explicitly authorized production entry.
+export async function patchPinnedActorSource(html){
+ const bytes=new TextEncoder().encode(html),head=new TextEncoder().encode('blob '+bytes.length+'\0'),b=new Uint8Array(head.length+bytes.length);b.set(head);b.set(bytes,head.length);
+ require(hex(await crypto.subtle.digest('SHA-1',b))===PINS.sourceBlob,'V06 source revision mismatch');
+ require(html.includes('const GENERATION_ALLOWED=false,SCENE_READY=false;'),'existing generation lock');
+ const needle='return {verify};\n})();';require(html.split(needle).length===2,'existing namespace shape changed');
+ // Existing bindActor/arr are passed directly, not reimplemented. This adds no renderer.
+ return html.replace(needle, 'return {verify,bindNativeV10:(T,payload,adapter)=>adapter(T,payload,bindActor,arr)};\n})();');
+}
+
+const NATIVE_SOURCE="\nasync function prepareV11(T,L,scene,renderer,device,payload,adapter){\n require(!GENERATION_ALLOWED&&!SCENE_READY&&payload.config.generation_allowed===false&&payload.config.v10.render_allowed===false,'V11 non-render lock');\n const {GLTFLoader}=await import(\"three/addons/loaders/GLTFLoader.js\");\n let stage,bound,target,post,worldPass;\n try{\n  stage=await bindStage(T,GLTFLoader,scene,payload);\n  const lights=bindLights(T,scene,stage,payload);\n  scene.background=new T.Color(0x101010);\n  bound=njStage.bindNativeV10(T,payload,adapter);\n  const camera=stage.cameras.C01_WIDE;require(camera,'C01 missing');\n  // Existing still beauty pass and a separate native overlay sequence.\n  post=new T.PostProcessing(renderer);worldPass=L.pass(scene,camera);post.outputNode=worldPass.getTextureNode('output');\n  target=new T.RenderTarget(W,H,{format:T.RGBAFormat,type:T.UnsignedByteType,colorSpace:T.NoColorSpace,depthBuffer:true,stencilBuffer:false,samples:0,generateMipmaps:false});\n  require(['setRenderTarget','render','clearDepth','setSize'].every(k=>typeof renderer[k]==='function'),'renderer composition API unavailable');\n  require(typeof post.render==='function'&&typeof device.createCommandEncoder==='function'&&typeof device.createBuffer==='function','beauty/readback API unavailable');\n  function framePlan(f,view='C01_WIDE'){\n   const p=bound.frame(f,view);\n   return [{id:'WORLD_BEAUTY',scene,camera},...p.passes];\n  }\n  // Fully wired, permanently locked in this revision. No render/readback invocation in V11.\n  async function drawFrame(f,view,explicitApproval){\n   require(GENERATION_ALLOWED&&SCENE_READY&&explicitApproval==='動画生成開始','V11 generation prohibited');\n   const passes=framePlan(f,view),previous=renderer.autoClear;\n   try{\n    renderer.setSize(W,H,false);renderer.setRenderTarget(target);\n    renderer.autoClear=true;await post.render();\n    renderer.autoClear=false;\n    for(const pass of passes.slice(1)){await renderer.clearDepth();await renderer.render(pass.scene,pass.camera)}\n    await renderer.waitForGPU();\n    return target;\n   }finally{renderer.autoClear=previous;renderer.setRenderTarget(null)}\n  }\n  // Test only the new pass-selection boundary, not the prior 150-frame projection test.\n  const first=framePlan(0).map(p=>p.id),moving=framePlan(1).map(p=>p.id),last=framePlan(149).map(p=>p.id);\n  require(first.join(',')==='WORLD_BEAUTY,STEP3_NATIVE_PLATE,F0_ORIGINAL_CUTOUT'&&moving.join(',')==='WORLD_BEAUTY,STEP3_NATIVE_PLATE,V45_NATIVE_MOTION'&&last.join(',')===moving.join(','),'new render pass routing mismatch');\n  let locked=false;try{await drawFrame(0,'C01_WIDE','動画生成開始')}catch(e){locked=e.message==='V11 generation prohibited'}require(locked,'generation guard');\n  return {status:'PREPARED_NATIVE_C01_NON_RENDER',scope:'fixed C01 candidate, not approved S01 camera path',width:W,height:H,fps:30,frames:150,seconds:5,first_passes:first,moving_passes:moving,last_passes:last,light_count:lights.length,previous_projection:'REUSED_NOT_RERUN',render_target:'1920x1080 RGBA8 candidate, allocation/readback unverified',composition:'existing V13 beauty + separate plate + one conductor overlay; color/alpha/occlusion unverified',world_actor:'BLOCK_UNCALIBRATED',other_regions:'9 STATIC NATIVE ART REGIONS',score_Y001:'WORLD_PASS_PENDING F93-111',audio:'V09 original PCM 0-240000 mapped; not reselected',audio_pcm_sha256:'d9a3c8bc9226c46962b5a06f94599866372a6ae8cc13329a19a71b0c34b4c7d2',generation_authorized:false,render_calls:0,encoded:false,checkpoint_written:false};\n }finally{bound?.dispose();target?.dispose();post?.dispose();worldPass?.dispose();stage?.paperGeometry.dispose();}\n}\n";
+
+function once(s,a,b){require(s.split(a).length===2,'protected source shape mismatch');return s.replace(a,()=>b)}
+function patchV11(s){
+ s=once(s,'async function gpuSetup(preflightOnly=false,projectPayload=null){','async function gpuSetup(preflightOnly=false,projectPayload=null,nativeAdapter=null){');
+ s=once(s,'if(projectPayload){const result=await njStage.verify(T,scene,projectPayload);','if(projectPayload){check(preflightOnly===true&&typeof nativeAdapter==="function","V11 adapter only");const result=await njStage.prepareV11(T,L,scene,renderer,device,projectPayload,nativeAdapter);');
+ s=once(s,'return {verify,bindNativeV10:(T,payload,adapter)=>adapter(T,payload,bindActor,arr)};\n})();',NATIVE_SOURCE+'\nreturn {verify,prepareV11,bindNativeV10:(T,payload,adapter)=>adapter(T,payload,bindActor,arr)};\n})();');
+ const i=s.indexOf('$("njCheck").onclick=async()=>{');require(i>=0,'old handler not found');
+ s=s.slice(0,i)+ 'window.v11Prepare=async(p,adapter)=>{let gpu;try{gpu=await gpuSetup(true,p,adapter);return {backend:gpu.backend,...gpu.stage}}finally{gpu?.destroy()}};\n'+s.slice(s.lastIndexOf('</script>'));
+ return s;
+}
+
+
+const $=id=>document.getElementById(id);
+let busy=false;
+$('file').onchange=()=>{$('prepare').disabled=busy||!$('file').files[0]};
+$('prepare').onclick=async()=>{
+ if(busy)return;busy=true;$('prepare').disabled=true;$('file').disabled=true;
+ $('status').textContent='原本とV11統合入力を確認中';$('log').value='';
+ try{
+  const f=$('file').files[0];require(f?.size===44217141,'V11 input size mismatch');
+  const bytes=await f.arrayBuffer();require(await sha(bytes)==='e86b1d9d6bb03068f0b88ad3c1830912c7e85e9318a0c7245f8b065153f75fae','V11 input SHA mismatch');
+  const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));require(payload.config.project==='NanJaRo'&&payload.config.generation_allowed===false,'project lock');
+  const r=await fetch('../nanjaro-actor-light-check/index.html',{cache:'no-store',credentials:'same-origin',redirect:'error'});require(r.ok,'existing GPU engine unavailable');
+  const src=new TextDecoder('utf-8',{fatal:true}).decode(await r.arrayBuffer());
+  const patched=patchV11(await patchPinnedActorSource(src));
+  const frame=$('adapter');
+  await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{frame.onload=null;reject(Error('engine load timeout'))},15000);frame.onload=()=>{clearTimeout(timer);frame.onload=null;resolve()};frame.srcdoc=patched});
+  require(typeof frame.contentWindow?.v11Prepare==='function','V11 adapter missing');
+  $('status').textContent='既存GPUに新しい合成パスを接続中（描画なし）';
+  const report=await frame.contentWindow.v11Prepare(payload,bindNativeArt);
+  require(report.status==='PREPARED_NATIVE_C01_NON_RENDER'&&report.render_calls===0&&!report.encoded&&!report.checkpoint_written,'unexpected report');
+  $('log').value=JSON.stringify({version:'V11',project:'SUSHI-JARO！',input_sha256:'e86b1d9d6bb03068f0b88ad3c1830912c7e85e9318a0c7245f8b065153f75fae',...report},null,2);
+  $('status').textContent='接続成功。描画はしていません。正式S01は未完成。';
+ }catch(e){$('status').textContent='停止：'+e.message;$('log').value=JSON.stringify({status:'BLOCK',error:String(e),generation_authorized:false,rendered:false,encoded:false,checkpoint_written:false},null,2)}
+ finally{$('adapter').removeAttribute('srcdoc');busy=false;$('file').disabled=false;$('prepare').disabled=!$('file').files[0]}
+};
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('log').value)}catch{$('log').focus();$('log').select()}};
+
+</script></body></html>
