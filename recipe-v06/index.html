@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src 'self' https://cdn.jsdelivr.net; frame-src 'self' about:; img-src blob: data:; media-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'"><title>共通MV制作 V06｜作品切替</title><style>
+:root{color-scheme:light dark;font:100% system-ui}*{box-sizing:border-box}body{margin:0;line-height:1.65}main{max-width:44rem;margin:auto;padding:1rem}section{border:1px solid #888;border-radius:.75rem;padding:1rem;margin:1rem 0}button,input{font:inherit;max-width:100%}button{width:100%;min-height:48px;border:1px solid #777;border-radius:.5rem;margin:.4rem 0;padding:.5rem;background:#2057a5;color:white;font-weight:650}button:disabled{background:#666}label{display:block;font-weight:650}input[type=file]{width:100%;min-height:48px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.85rem}iframe{width:100%;height:25rem;border:1px solid #888;border-radius:.5rem}h1{font-size:1.5rem}h2{font-size:1.2rem}:focus-visible{outline:3px solid #b45500;outline-offset:3px}a{color:inherit}[hidden]{display:none!important}#status{padding:.5rem;border:1px solid #888;border-radius:.5rem}progress{width:100%}
+</style></head><body><main><h1>共通MV制作 V06｜作品切替</h1><p>既存の2作品を同じ入口から扱う非生成試作。原本・保存区間を変更しません。生成機能は使用しません。</p><section><h2>1. 作品のレシピを確認</h2><button id="sample">Dear Ga Ga.（既存合格結果を再利用）</button><label for="input">検査用JSONを選択</label><input id="input" type="file" accept=".json,application/json" aria-describedby="help"><p id="help">V03レシピ、または既存 SUSHI_JARO_GPU_actor_light_input.json に対応。素材は端末内だけで処理します。既存コード取得は同じサイト、ライブラリ取得は固定CDNを利用。</p><label for="progress">接続進捗</label><progress id="progress" value="0" max="3">0 / 3</progress><p id="status" role="status" aria-live="polite" aria-atomic="true">未実行</p></section><section id="chosen" hidden><h2>2. 作品別アダプター</h2><p id="selected"></p><p id="reuse"></p><button id="connect">既存アダプターへ接続（描画なし）</button><a id="fallback" hidden>既存ページをSafariで直接開く</a><p id="fallbackHelp" hidden>埋め込み接続が端末で動かない場合のみ使用。元の入力ファイルが必要です。</p><iframe id="adapter" title="既存作品の非描画検査" sandbox="allow-scripts allow-same-origin" hidden></iframe></section><section><h2>3. 結果</h2><p id="verdict">未検査。実映像・音声・美術品質は今回の対象外。</p><details><summary>詳細な接続記録</summary><pre id="log"></pre></details></section><noscript>JavaScriptが無効です。</noscript></main><script>
+'use strict';
+const REGISTRY=[{"id":"iphone_v13","title":"Dear Ga Ga.","path":"../recipe-v05/index.html","blob":"d36b4c236036e48465615a69a144f91e8f411f41","mode":"canonical_recipe_v1","digest":"6dec9c64a60eadc6a866834b71d90ab4ee0360df22bc229bb15a01253242bc90","prior":"V05_IPHONE_NON_RENDER_PASS"},{"id":"nanjaro_actor_light","title":"SUSHI-JARO！","path":"../nanjaro-actor-light-check/index.html","blob":"fa7118ac6bfbbec8d078fcead21b42c76d18cc98","mode":"legacy_asset_bundle","digest":"6fa8ccc90b966b42384c79382e697f3c9ff0ee0271789ec769c871d7605a2036","bytes":32063989,"prior":"NOT_RETESTED_BY_V06"}];
+const DEMO={"binding":{"adapter":"iphone_v13","adapter_blob_sha":"0c0b9f5b80edcc21a2702d4b18f0e68a5f279df6","recipe_id":"v13-30s-v01-art-adapter","sample_frames":1440000,"sample_rate":48000,"segment_count":5,"segment_frames":180,"source_pcm_sha256":"ab2a53e64226f541446c389595d893aa51f7cdc8257be8fd98355415e36104b7","source_start_sample":2304000},"execution":"inspect_only","generation_authorized":false,"manifest":{"assets":[{"id":"reference","path":"reference.jpg","sha256":"4366851d0e115206510343674ad913fc3ae2b2517c40d3f34b96fb98eed5a7b7"},{"id":"art_archive","path":"reference.zip","sha256":"ab8d37e939484f800744772acf9cace105a5c90c4987db6512facc8df0366273"}],"project_id":"v13-connection-fixture"},"recipe":{"fps":30,"height":1080,"project_id":"v13-connection-fixture","schema_version":1,"shots":[{"asset_id":"reference","end_frame_exclusive":324,"id":"phase-0","narrative_goal":"approach","start_frame":0},{"asset_id":"reference","end_frame_exclusive":459,"id":"phase-1","narrative_goal":"cross","start_frame":324},{"asset_id":"reference","end_frame_exclusive":598,"id":"phase-2","narrative_goal":"separate","start_frame":459},{"asset_id":"reference","end_frame_exclusive":900,"id":"phase-3","narrative_goal":"reveal","start_frame":598}],"source_audio_sha256":"041eeecd59f2bbe8804e437a43bb41149abc3b2bb3b1c4c305745dad3d8c7b47","start_song_seconds":48,"total_frames":900,"width":1920}};
+
+const byId=id=>REGISTRY.find(x=>x.id===id);
+function canonical(x){if(Array.isArray(x))return '['+x.map(canonical).join(',')+']';if(x!==null&&typeof x==='object')return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+canonical(x[k])).join(',')+'}';return JSON.stringify(x)}
+function check(ok,msg){if(!ok)throw Error(msg)}
+function route(p,hash,mode,bytes){
+ const e=REGISTRY.find(x=>x.digest===hash&&x.mode===mode);check(e,'登録済み作品のSHA-256と一致しません。');
+ if(e.id==='iphone_v13')check(p.execution==='inspect_only'&&p.generation_authorized===false&&p.binding?.adapter==='iphone_v13'&&p.recipe?.project_id===DEMO.recipe.project_id,'V13の作品・検査範囲が異なります。');
+ else check(bytes===e.bytes&&p.config?.project==='NanJaRo'&&p.config.generation_allowed===false&&p.config.actor?.mode==='NATIVE_SCREEN_ONLY'&&p.config.actor.world_binding==='BLOCK_UNCALIBRATED','SUSHI-JAROの作品・検査範囲が異なります。');
+ return e;
+}
+function once(s,a,b){check(s.split(a).length===2,'原本構造が変わりました。');return s.replace(a,()=>b)}
+function safeAdapter(html,e){
+ if(e.id==='iphone_v13'){check(html.includes('const GENERATION_ALLOWED=false,SCENE_READY=true;')&&html.includes('V05: checkpoint access prohibited'),'V05ロック不一致');return html}
+ check(html.includes('const GENERATION_ALLOWED=false,SCENE_READY=false;'),'生成禁止フラグ不一致');
+ const line=html.split('\n').find(l=>l.startsWith('function dbOpen(){'));check(line,'DB関数不明');
+ html=once(html,line,'function dbOpen(){throw Error("V06: checkpoint access prohibited");}');
+ html=once(html,'async function gpuSetup(preflightOnly=false,projectPayload=null){','async function gpuSetup(preflightOnly=false,projectPayload=null){\n check(preflightOnly===true&&projectPayload?.config?.project==="NanJaRo"&&projectPayload.config.generation_allowed===false,"V06 inspection only");');
+ html=once(html,'<input type="file" id="njPayload"','<label for="njPayload">既存SUSHI-JARO入力JSON</label><input type="file" id="njPayload"');
+ html=once(html,'<p id="njStatus">','<p id="njStatus" role="status" aria-live="polite" aria-atomic="true">');
+ html=once(html,'<textarea id="njReport" readonly>','<label for="njReport">技術検査結果</label><textarea id="njReport" readonly>');
+ return html;
+}
+
+
+const $=id=>document.getElementById(id);let current=null,chosenFile=null,busy=false;
+const hex=b=>Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,'0')).join('');
+async function digest(algorithm,b){check(globalThis.crypto?.subtle,'安全なSafariページが必要です。');return hex(await crypto.subtle.digest(algorithm,b))}
+function stage(n,msg){$('progress').value=n;$('progress').textContent=n+' / 3';$('status').textContent=msg}
+function lock(on){busy=on;$('input').disabled=on;$('sample').disabled=on;$('connect').disabled=on||!current}
+function reset(){current=null;chosenFile=null;$('chosen').hidden=true;$('adapter').hidden=true;$('adapter').removeAttribute('srcdoc');$('fallback').hidden=true;$('fallbackHelp').hidden=true;$('log').textContent='';$('verdict').textContent='未検査。'}
+function chosen(e,f){current=e;chosenFile=f;$('chosen').hidden=false;$('selected').textContent=e.title+'｜登録済み既存アダプター';$('reuse').textContent=e.id==='iphone_v13'?'V05の実機合格を引き継ぎ、GPU検査は再実行しません。':'既存の舞台・照明・人物接続を使います。世界座標校正・実描画は未完了。';$('connect').textContent=e.id==='iphone_v13'?'既存アダプターの原本接続を確認':'舞台・照明・人物へ接続（非描画）';$('fallback').href=e.path;$('log').textContent=JSON.stringify({project:e.title,adapter_blob_sha:e.blob,input_sha256:e.digest,route:'PASS',generation_authorized:false},null,2);stage(1,'1 / 3：作品識別完了。'+e.title)}
+async function sample(){if(busy)return;lock(true);reset();try{const h=await digest('SHA-256',new TextEncoder().encode(canonical(DEMO)));chosen(route(DEMO,h,'canonical_recipe_v1',0),null)}catch(e){stage(0,'停止：'+e.message)}finally{lock(false)}}
+$('sample').addEventListener('click',()=>{$('input').value='';sample()});
+$('input').addEventListener('change',async()=>{const f=$('input').files[0];if(!f||busy)return;lock(true);reset();stage(0,'JSONを端末内で確認中。');try{
+ check(f.size<=40*1024*1024,'対応するJSONの最大サイズは40MiBです。');
+ const b=await f.arrayBuffer(),raw=await digest('SHA-256',b);let p,e;
+ if(raw===byId('nanjaro_actor_light').digest){p=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));e=route(p,raw,'legacy_asset_bundle',b.byteLength)}
+ else {check(b.byteLength<=262144,'未登録の大容量JSONです。');p=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));const h=await digest('SHA-256',new TextEncoder().encode(canonical(p)));e=route(p,h,'canonical_recipe_v1',b.byteLength)}
+ chosen(e,f);
+ }catch(e){stage(0,'停止：'+e.message);$('verdict').textContent='未登録・不一致の入力を拒否しました。'}finally{lock(false)}});
+async function pinned(e){
+ const response=await fetch(e.path,{cache:'no-store',credentials:'same-origin',redirect:'error'});check(response.ok,'既存ページ取得失敗：'+response.status);
+ const raw=new Uint8Array(await response.arrayBuffer()),header=new TextEncoder().encode('blob '+raw.length+'\0'),buf=new Uint8Array(header.length+raw.length);buf.set(header);buf.set(raw,header.length);
+ check(await digest('SHA-1',buf)===e.blob,'既存アダプター原本が登録値と異なります。');
+ return safeAdapter(new TextDecoder('utf-8',{fatal:true}).decode(raw),e);
+}
+async function load(html){const frame=$('adapter');frame.hidden=false;await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>{frame.onload=null;reject(Error('既存アダプター起動待ちが時間切れ'))},15000);frame.onload=()=>{clearTimeout(timeout);frame.onload=null;resolve()};frame.srcdoc=html});return frame.contentDocument}
+$('connect').addEventListener('click',async()=>{if(busy||!current)return;const e=current,f=chosenFile;lock(true);stage(2,'2 / 3：既存アダプター原本を照合中。');try{
+ const html=await pinned(e);
+ if(e.id==='iphone_v13'){stage(3,'3 / 3：原本一致。V05実機合格を再利用。');$('verdict').textContent='作品切替・原本接続確認済み。GPU再検査なし。';$('log').textContent+='\nV05: prior result reused; adapter source verified; GPU not rerun';return}
+ check(f,'既存入力JSONが必要です。');check(typeof DataTransfer==='function','このSafariではファイルの自動受け渡しが利用できません。');
+ const doc=await load(html),input=doc?.getElementById('njPayload'),button=doc?.getElementById('njCheck'),report=doc?.getElementById('njReport');
+ check(input&&button&&report&&typeof button.onclick==='function','既存アダプターの入口が取得できません。');
+ const dt=new DataTransfer();dt.items.add(f);input.files=dt.files;check(input.files[0]?.size===f.size,'ファイル受け渡し不成立');
+ stage(2,'2 / 3：既存舞台・照明・人物を非描画検査中。');
+ await button.onclick();const r=JSON.parse(report.value);$('log').textContent+='\n'+JSON.stringify(r,null,2);
+ check(r.status==='PASS_LIGHT_ACTOR_API_ONLY'&&r.backend==='three-r180-webgpu'&&r.rendered===false&&r.encoded===false&&r.checkpoint_written===false,'既存アダプター停止：'+(r.error||r.status));
+ stage(3,'3 / 3：SUSHI-JARO 非描画接続合格。');$('verdict').textContent='舞台・照明・人物の既存API接続合格。映像品質・全編制作・VoiceOverは未確認。';
+ }catch(err){stage(1,'接続停止：'+err.message);$('verdict').textContent='実機接続未完了。生成は行いません。';$('fallback').hidden=false;$('fallbackHelp').hidden=false;}finally{lock(false);if($('progress').value===3)$('connect').disabled=true}});
+
+</script></body></html>
